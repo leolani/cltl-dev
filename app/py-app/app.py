@@ -3,10 +3,6 @@ import logging.config
 import os
 import time
 
-from flask import Flask
-from werkzeug.middleware.dispatcher import DispatcherMiddleware
-from werkzeug.serving import run_simple
-
 from app_service.context.service import ContextService
 from cltl.backend.api.backend import Backend
 from cltl.backend.api.camera import CameraResolution, Camera
@@ -14,6 +10,7 @@ from cltl.backend.api.microphone import Microphone
 from cltl.backend.api.storage import AudioStorage, ImageStorage
 from cltl.backend.api.text_to_speech import TextToSpeech
 from cltl.backend.impl.cached_storage import CachedAudioStorage
+from cltl.backend.impl.remote_storage import RemoteAudioStorage
 from cltl.backend.impl.sync_microphone import SynchronizedMicrophone
 from cltl.backend.impl.sync_tts import SynchronizedTextToSpeech, TextOutputTTS
 from cltl.backend.server import BackendServer
@@ -26,11 +23,12 @@ from cltl.backend.spi.text import TextOutput
 from cltl.chatui.api import Chats
 from cltl.chatui.memory import MemoryChats
 from cltl.combot.event.bdi import IntentionEvent, Intention
+from cltl.combot.event.emissor import SIG, MEN
 from cltl.combot.infra.config.k8config import K8LocalConfigurationContainer
 from cltl.combot.infra.di_container import singleton
-from cltl.combot.infra.event import Event
+from cltl.combot.infra.event.api import Event, PAYLOAD
 from cltl.combot.infra.event.kombu import KombuEventBusContainer
-from cltl.combot.infra.event.memory import SynchronousEventBusContainer
+from cltl.combot.infra.event.memory import SynchronousEventBus
 from cltl.combot.infra.event_log import LogWriter
 from cltl.combot.infra.resource.threaded import ThreadedResourceContainer
 from cltl.eliza.api import Eliza
@@ -50,14 +48,50 @@ from cltl_service.emissordata.service import EmissorDataService
 from cltl_service.intentions.init import InitService
 from cltl_service.keyword.service import KeywordService
 from cltl_service.vad.service import VadService
-from emissor.representation.util import serializer as emissor_serializer, object_hook as emissor_object_hook
+from emissor.representation.util import serializer as emissor_serializer, marshal, unmarshal, register_type_var
+from flask import Flask
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from werkzeug.serving import run_simple
 
 logging.config.fileConfig(os.environ.get('CLTL_LOGGING_CONFIG', default='config/logging.config'),
                           disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
 
 
-class InfraContainer(KombuEventBusContainer, SynchronousEventBusContainer, K8LocalConfigurationContainer, ThreadedResourceContainer):
+# Register TypeVar for usage with emissor serialization utils
+register_type_var(PAYLOAD)
+register_type_var(SIG)
+register_type_var(MEN)
+
+
+def serializer(obj):
+    """Serialize events into deserializable JSON using emissor utilities."""
+    return marshal(obj, cls=Event)
+
+
+def deserializer(obj):
+    """Deserialize events into propert Python objects using emissor utilities."""
+    return unmarshal(obj, cls=Event)
+
+
+class InfraContainer(KombuEventBusContainer, K8LocalConfigurationContainer, ThreadedResourceContainer):
+    @property
+    @singleton
+    def event_bus_serializer(self):
+        return serializer, deserializer
+
+    @property
+    @singleton
+    def event_bus(self):
+        config = self.config_manager.get_config("cltl.event")
+        implementation = config.get("implementation")
+        if implementation == "internal":
+            return SynchronousEventBus()
+        elif implementation == "kombu":
+            return super().event_bus
+        else:
+            raise ValueError("Unknown implementation: " + implementation)
+
     def start(self):
         pass
 
@@ -69,6 +103,10 @@ class BackendContainer(InfraContainer):
     @property
     @singleton
     def audio_storage(self) -> AudioStorage:
+        config = self.config_manager.get_config("cltl.backend")
+        storage_mode = config.get("audio_storage", fallback="local")
+        if storage_mode == "remote":
+            return RemoteAudioStorage.from_config(self.config_manager)
         return CachedAudioStorage.from_config(self.config_manager)
 
     @property
@@ -272,23 +310,16 @@ class ASRContainer(EmissorStorageContainer, InfraContainer):
         super().stop()
 
 
-class ElizaComponentsContainer(EmissorStorageContainer, InfraContainer):
+class ElizaComponentsContainer(InfraContainer):
     @property
     @singleton
     def keyword_service(self) -> KeywordService:
-        return KeywordService.from_config(self.emissor_data_client,
-                                          self.event_bus, self.resource_manager, self.config_manager)
+        return KeywordService.from_config(self.event_bus, self.resource_manager, self.config_manager)
 
     @property
     @singleton
     def context_service(self) -> ContextService:
         return ContextService.from_config(self.event_bus, self.resource_manager, self.config_manager)
-
-    @property
-    @singleton
-    def keyword_service(self) -> KeywordService:
-        return KeywordService.from_config(self.emissor_data_client,
-                                          self.event_bus, self.resource_manager, self.config_manager)
 
     @property
     @singleton
@@ -300,8 +331,7 @@ class ElizaComponentsContainer(EmissorStorageContainer, InfraContainer):
     @property
     @singleton
     def init_intention(self) -> InitService:
-        return InitService.from_config(self.emissor_data_client,
-                                       self.event_bus, self.resource_manager, self.config_manager)
+        return InitService.from_config(self.event_bus, self.resource_manager, self.config_manager)
 
     def start(self):
         logger.info("Start Eliza services")
@@ -342,7 +372,7 @@ class ChatUIContainer(InfraContainer):
         super().stop()
 
 
-class ElizaContainer(EmissorStorageContainer, InfraContainer):
+class ElizaContainer(InfraContainer):
     @property
     @singleton
     def eliza(self) -> Eliza:
@@ -351,8 +381,7 @@ class ElizaContainer(EmissorStorageContainer, InfraContainer):
     @property
     @singleton
     def eliza_service(self) -> ElizaService:
-        return ElizaService.from_config(self.eliza, self.emissor_data_client,
-                                        self.event_bus, self.resource_manager, self.config_manager)
+        return ElizaService.from_config(self.eliza, self.event_bus, self.resource_manager, self.config_manager)
 
     def start(self):
         logger.info("Start Eliza")
@@ -371,15 +400,11 @@ class ApplicationContainer(ElizaContainer, ElizaComponentsContainer,
                            EmissorStorageContainer, BackendContainer):
     @property
     @singleton
-    def event_bus_serializer(self):
-        return serializer, emissor_object_hook
-
-    @property
-    @singleton
     def log_writer(self):
         config = self.config_manager.get_config("cltl.event_log")
 
-        return LogWriter(config.get("log_dir"), serializer)
+        # Serialize in a plain JSON format
+        return LogWriter(config.get("log_dir"), emissor_serializer)
 
     @property
     @singleton
@@ -404,24 +429,20 @@ class ApplicationContainer(ElizaContainer, ElizaComponentsContainer,
                 super().stop()
 
 
-def serializer(obj):
-    try:
-        return emissor_serializer(obj)
-    except Exception:
-        try:
-            return vars(obj)
-        except Exception:
-            return str(obj)
-
-
 def main():
     ApplicationContainer.load_configuration()
     logger.info("Initialized Application")
     application = ApplicationContainer()
 
     with application as started_app:
+        logger.info("Starting the application")
+        time.sleep(1)
+
         intention_topic = started_app.config_manager.get_config("cltl.bdi").get("topic_intention")
-        started_app.event_bus.publish(intention_topic, Event.for_payload(IntentionEvent([Intention("init", None)])))
+        init_event = Event.for_payload(IntentionEvent([Intention("init", None)]))
+        started_app.event_bus.publish(intention_topic, init_event)
+
+        logger.info("Started 'init' intention")
 
         routes = {
             '/storage': started_app.storage_service.app,

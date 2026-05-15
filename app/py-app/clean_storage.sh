@@ -12,12 +12,5 @@ rm -f storage/image/*.png
 rm -f storage/image/*.json
 rm -f storage/image/*.pkl
 
-rm -rf storage/brain/**/*
-rmdir storage/brain/*
-rm -rf storage/rdf/**/*
-rmdir storage/rdf/*
-
 rm -rf storage/emissor/**/*
 rmdir storage/emissor/*
-
-rm -rf storage/vector_id/*
