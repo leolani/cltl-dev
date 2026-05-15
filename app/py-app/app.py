@@ -9,8 +9,8 @@ from cltl.backend.api.camera import CameraResolution, Camera
 from cltl.backend.api.microphone import Microphone
 from cltl.backend.api.storage import AudioStorage, ImageStorage
 from cltl.backend.api.text_to_speech import TextToSpeech
-from cltl.backend.impl.cached_storage import CachedAudioStorage
-from cltl.backend.impl.remote_storage import RemoteAudioStorage
+from cltl.backend.impl.cached_storage import CachedAudioStorage, CachedImageStorage
+from cltl.backend.impl.remote_storage import RemoteAudioStorage, RemoteImageStorage
 from cltl.backend.impl.sync_microphone import SynchronizedMicrophone
 from cltl.backend.impl.sync_tts import SynchronizedTextToSpeech, TextOutputTTS
 from cltl.backend.server import BackendServer
@@ -104,15 +104,25 @@ class BackendContainer(InfraContainer):
     @singleton
     def audio_storage(self) -> AudioStorage:
         config = self.config_manager.get_config("cltl.backend")
-        storage_mode = config.get("audio_storage", fallback="local")
+        storage_mode = config.get("audio_storage") if "audio_storage" in config else "local"
         if storage_mode == "remote":
             return RemoteAudioStorage.from_config(self.config_manager)
-        return CachedAudioStorage.from_config(self.config_manager)
+        elif storage_mode == "local":
+            return CachedAudioStorage.from_config(self.config_manager)
+        else:
+            raise ValueError("Unknown storage mode: " + storage_mode)
 
     @property
     @singleton
     def image_storage(self) -> ImageStorage:
-        return []
+        config = self.config_manager.get_config("cltl.backend")
+        storage_mode = config.get("audio_storage") if "audio_storage" in config else "local"
+        if storage_mode == "remote":
+            return RemoteImageStorage.from_config(self.config_manager)
+        elif storage_mode == "local":
+            return CachedImageStorage.from_config(self.config_manager)
+        else:
+            raise ValueError("Unknown storage mode: " + storage_mode)
 
     @property
     @singleton
