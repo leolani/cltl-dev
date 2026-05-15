@@ -65,3 +65,11 @@ py-install: dist
 	$(info Install $(project_name))
 	@rm -rf $(project_repo)/$(artifact_name)-{0..9}*+{0..9}*.tar.gz
 	@cp dist/*.tar.gz $(project_repo)
+
+
+.PHONY: docker-install
+docker-install:
+	$(info Install $(project_name) into system Python)
+	pip install --upgrade pip
+	pip install -r requirements.txt --upgrade --upgrade-strategy eager --pre \
+		--no-index --find-links="$(project_mirror)" --find-links="$(project_repo)"

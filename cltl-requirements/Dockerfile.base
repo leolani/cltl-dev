@@ -1,0 +1,23 @@
+# syntax = docker/dockerfile:1.2
+# Base image with all external PyPI dependencies pre-installed into system Python.
+# Component images inherit from this to avoid re-installing heavy dependencies.
+
+FROM python:3.9
+
+# Build tools required for compiled packages (numpy, scipy, webrtcvad, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc \
+        build-essential \
+        zlib1g-dev \
+        cmake \
+        gfortran \
+        libblas-dev \
+        liblapack-dev \
+        libatlas-base-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+
+RUN --mount=type=bind,target=/repo,from=cltl/cltl-requirements:latest,source=/repo \
+    pip install --upgrade pip && \
+    pip install -r requirements.txt --no-index --find-links=/repo/mirror

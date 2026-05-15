@@ -41,7 +41,7 @@ $(artifacts):
 install: docker
 
 .PHONY: docker
-docker: docker.lock
+docker: docker.base.lock
 
 docker.mirror.lock: $(mirror_lock)
 	DOCKER_BUILDKIT=1 docker build -t cltl/${project_name}-mirror:${project_version} -f Dockerfile.mirror .
@@ -50,3 +50,7 @@ docker.mirror.lock: $(mirror_lock)
 docker.lock: docker.mirror.lock $(artifacts) $(wildcard $(artifacts)/*)
 	DOCKER_BUILDKIT=1 docker build -t cltl/${project_name}:${project_version} --build-arg image=${project_name}-mirror --build-arg version=$(shell cat docker.mirror.lock) .
 	@touch docker.lock
+
+docker.base.lock: docker.lock
+	DOCKER_BUILDKIT=1 docker build -t cltl/eliza-base:latest -f Dockerfile.base .
+	@touch docker.base.lock
