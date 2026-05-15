@@ -1,0 +1,173 @@
+services:
+  rabbitmq:
+    image: "rabbitmq:3.12-management"
+    container_name: eliza-rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=eliza
+      - RABBITMQ_DEFAULT_PASS=eliza123
+      - RABBITMQ_DEFAULT_VHOST=/
+    volumes:
+      - ./storage/rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+    networks:
+      - eliza-network
+
+  eliza-backend:
+    image: cltl/eliza-backend
+    build:
+      context: ../../cltl-backend
+    container_name: eliza-backend
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./config:/cltl-backend/config
+      - ./storage:/cltl-backend/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-backend/config/logging.config
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eliza-network
+
+  eliza-vad:
+    image: cltl/eliza-vad
+    build:
+      context: ../../cltl-vad
+    container_name: eliza-vad
+    volumes:
+      - ./config:/cltl-vad/config
+      - ./storage:/cltl-vad/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-vad/config/logging.config
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eliza-network
+
+  eliza-asr:
+    image: cltl/eliza-asr
+    build:
+      context: ../../cltl-asr
+    container_name: eliza-asr
+    volumes:
+      - ./config:/cltl-asr/config
+      - ./storage:/cltl-asr/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-asr/config/logging.config
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eliza-network
+
+  eliza-emissor:
+    image: cltl/eliza-emissor
+    build:
+      context: ../../cltl-emissor-data
+    container_name: eliza-emissor
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./config:/cltl-emissor-data/config
+      - ./storage:/cltl-emissor-data/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-emissor-data/config/logging.config
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eliza-network
+
+  eliza-eliza:
+    image: cltl/eliza-eliza
+    build:
+      context: ../../cltl-eliza
+    container_name: eliza-eliza
+    volumes:
+      - ./config:/cltl-eliza/config
+      - ./storage:/cltl-eliza/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-eliza/config/logging.config
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eliza-network
+
+  eliza-context:
+    image: cltl/eliza-context
+    build:
+      context: ../../cltl-context
+    container_name: eliza-context
+    volumes:
+      - ./config:/cltl-context/config
+      - ./storage:/cltl-context/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-context/config/logging.config
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eliza-network
+
+  eliza-chatui:
+    image: cltl/eliza-chatui
+    build:
+      context: ../../cltl-chat-ui
+    container_name: eliza-chatui
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./config:/cltl-chatui/config
+      - ./storage:/cltl-chatui/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-chatui/config/logging.config
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eliza-network
+
+  eliza-app:
+    image: cltl/eliza-app
+    build:
+      context: ../..
+      dockerfile: app/docker-app/app.Dockerfile
+    container_name: eliza-app
+    volumes:
+      - ./config:/app/config
+      - ./storage:/app/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/app/config/logging.config
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      eliza-backend:
+        condition: service_healthy
+      eliza-vad:
+        condition: service_healthy
+      eliza-asr:
+        condition: service_healthy
+      eliza-emissor:
+        condition: service_healthy
+      eliza-eliza:
+        condition: service_healthy
+      eliza-context:
+        condition: service_healthy
+      eliza-chatui:
+        condition: service_healthy
+    networks:
+      - eliza-network
+
+networks:
+  eliza-network:
+    driver: bridge
