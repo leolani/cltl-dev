@@ -23,6 +23,10 @@ services:
     image: cltl/eliza-backend
     build:
       context: ../../cltl-backend
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
     container_name: eliza-backend
     ports:
       - "8001:8000"
@@ -41,6 +45,10 @@ services:
     image: cltl/eliza-vad
     build:
       context: ../../cltl-vad
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
     container_name: eliza-vad
     volumes:
       - ./config:/cltl-vad/config
@@ -57,6 +65,10 @@ services:
     image: cltl/eliza-asr
     build:
       context: ../../cltl-asr
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
     container_name: eliza-asr
     volumes:
       - ./config:/cltl-asr/config
@@ -73,6 +85,10 @@ services:
     image: cltl/eliza-emissor
     build:
       context: ../../cltl-emissor-data
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
     container_name: eliza-emissor
     ports:
       - "8002:8000"
@@ -91,6 +107,10 @@ services:
     image: cltl/eliza-eliza
     build:
       context: ../../cltl-eliza
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
     container_name: eliza-eliza
     volumes:
       - ./config:/cltl-eliza/config
@@ -107,6 +127,10 @@ services:
     image: cltl/eliza-context
     build:
       context: ../../cltl-context
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
     container_name: eliza-context
     volumes:
       - ./config:/cltl-context/config
@@ -123,6 +147,10 @@ services:
     image: cltl/eliza-chatui
     build:
       context: ../../cltl-chat-ui
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
     container_name: eliza-chatui
     ports:
       - "8003:8000"
@@ -140,8 +168,12 @@ services:
   eliza-app:
     image: cltl/eliza-app
     build:
-      context: ../..
-      dockerfile: app/docker-app/app.Dockerfile
+      context: ..
+      dockerfile: docker-app/app.Dockerfile
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
     container_name: eliza-app
     volumes:
       - ./config:/app/config

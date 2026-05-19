@@ -1,23 +1,26 @@
 # syntax = docker/dockerfile:1.2
+# Builds the app-level orchestration service.
+# Build context: app/ directory (requires cltl/cltl-base:latest to exist first)
+# Named build context: leolani (supplied via --build-context or docker-compose additional_contexts)
 
-FROM python:3.9
+ARG base_image=cltl/cltl-base:latest
+FROM ${base_image}
 
 WORKDIR /app
 
-COPY emissor /src/emissor
-COPY cltl-combot /src/cltl-combot
-COPY cltl-emissor-data /src/cltl-emissor-data
-COPY cltl-context /src/cltl-context
-COPY app/py-app/src /src/app-service
+COPY --from=leolani . /leolani/
 
-RUN pip install --no-cache-dir \
-    -e /src/emissor \
-    -e "/src/cltl-combot[external]" \
-    -e "/src/cltl-emissor-data[client]" \
-    -e "/src/cltl-context[service]" \
-    -e /src/app-service
+COPY py-app/requirements.txt ./requirements.txt
+COPY setup.py ./
+COPY py-app ./py-app
 
-COPY app/docker-app /app
+RUN pip install --no-index --no-build-isolation --find-links=/leolani -r requirements.txt && \
+    rm -rf /leolani && \
+    find /usr/local/lib/python3.10 -type d -name __pycache__ -exec rm -rf {} +
+
+RUN pip install --no-deps .
+
+COPY docker-app/app.py ./
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1

@@ -1,4 +1,5 @@
 SHELL = /bin/bash
+artifact_name = "cltl.eliza-app"
 
 project_dependencies ?= $(addprefix $(project_root)/, \
 		emissor \
