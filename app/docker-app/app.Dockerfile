@@ -1,4 +1,4 @@
-# syntax = docker/dockerfile:1.2
+# syntax = docker/dockerfile:1.4
 # Builds the app-level orchestration service.
 # Build context: app/ directory (requires cltl/cltl-base:latest to exist first)
 # Named build context: leolani (supplied via --build-context or docker-compose additional_contexts)
@@ -10,15 +10,13 @@ WORKDIR /app
 
 COPY --from=leolani . /leolani/
 
-COPY py-app/requirements.txt ./requirements.txt
-COPY setup.py ./
+COPY docker-app/requirements.txt ./requirements.txt
+COPY setup.py README.md VERSION ./
 COPY py-app ./py-app
 
 RUN pip install --no-index --no-build-isolation --find-links=/leolani -r requirements.txt && \
     rm -rf /leolani && \
     find /usr/local/lib/python3.10 -type d -name __pycache__ -exec rm -rf {} +
-
-RUN pip install --no-deps .
 
 COPY docker-app/app.py ./
 

@@ -1,3 +1,5 @@
+.
+
 cltl.backend[impl]
 cltl.context[service]
 cltl.asr[impl,whisper,service]
@@ -13,7 +15,6 @@ pyaudio
 sounddevice
 opencv-python==4.8.0.76
 pyobjc==9.2;sys_platform=='darwin'
-
 
 flask
 werkzeug

@@ -1,0 +1,54 @@
+services:
+  eliza-backend:
+    image: cltl/eliza-backend
+    build:
+      context: ../../cltl-backend
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
+    container_name: eliza-client-backend
+    ports:
+      - "9001:8000"
+    volumes:
+      - ./config-client:/cltl-backend/config
+      - ./storage-client:/cltl-backend/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-backend/config/logging.config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    networks:
+      - eliza-client-network
+
+  eliza-app:
+    image: cltl/eliza-app
+    build:
+      context: ..
+      dockerfile: docker-app/app.Dockerfile
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
+    container_name: eliza-client-app
+    volumes:
+      - ./config-client:/app/config
+      - ./storage-client:/app/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/app/config/logging.config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      eliza-backend:
+        condition: service_healthy
+    networks:
+      - eliza-client-network
+
+networks:
+  eliza-client-network:
+    driver: bridge

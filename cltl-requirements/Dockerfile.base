@@ -1,23 +1,42 @@
 # syntax = docker/dockerfile:1.2
-# Base image with all external PyPI dependencies pre-installed into system Python.
-# Component images inherit from this to avoid re-installing heavy dependencies.
+# Two-stage build for optimal layer caching:
+#   apt   — system packages (rarely changes)
+#   pypi  — external Python deps (changes with requirements.txt)
+#
+# cltl.* modules are installed per-component via --build-context leolani=...
+# Build: DOCKER_BUILDKIT=1 docker build -t cltl/cltl-base:latest -f Dockerfile.base .
 
-FROM python:3.9
+FROM python:3.10 AS apt
 
-# Build tools required for compiled packages (numpy, scipy, webrtcvad, etc.)
+SHELL ["/bin/bash", "-c"]
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        less \
         gcc \
         build-essential \
         zlib1g-dev \
+        wget \
+        unzip \
         cmake \
         gfortran \
         libblas-dev \
         liblapack-dev \
-        libatlas-base-dev \
+        libopenblas-dev \
+        libasound-dev \
+        libportaudio2 \
+        libportaudiocpp0 \
+        portaudio19-dev \
+        ffmpeg \
+        libsm6 \
+        libxext6 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+
+FROM apt AS pypi
 
 COPY requirements.txt ./
 
-RUN --mount=type=bind,target=/repo,from=cltl/cltl-requirements:latest,source=/repo \
+RUN --mount=type=cache,mode=0755,target=/root/.cache/pip \
     pip install --upgrade pip && \
-    pip install -r requirements.txt --no-index --find-links=/repo/mirror
+    pip install -r requirements.txt && \
+    find /usr/local/lib/python3.10 -type d -name __pycache__ -exec rm -rf {} +

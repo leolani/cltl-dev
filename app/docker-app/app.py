@@ -1,18 +1,17 @@
 import logging.config
 import os
-import time
 from threading import Thread
 
-from app_service.context.service import ContextService
+import time
 from cltl.combot.event.bdi import IntentionEvent, Intention
 from cltl.combot.event.emissor import SIG, MEN
-from cltl.combot.infra.config.k8config import K8LocalConfigurationContainer
 from cltl.combot.infra.container import InfraContainer
 from cltl.combot.infra.di_container import singleton
 from cltl.combot.infra.event.api import Event, PAYLOAD
 from cltl.combot.infra.event.memory import SynchronousEventBus
 from cltl.combot.infra.event_log import LogWriter
 from cltl_service.combot.event_log.service import EventLogService
+from eliza_app_service.context.service import ContextService
 from emissor.representation.util import serializer as emissor_serializer, marshal, unmarshal, register_type_var
 from flask import Flask
 

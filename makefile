@@ -27,7 +27,7 @@ submodules := $(shell git submodule | xargs -L1 | cut -f 2 -d ' ' | grep -v util
 
 .PHONY: update-build
 update-build:
-	-git submodule foreach 'git submodule update --remote util'
+	-git submodule foreach 'git submodule update --remote util | :'
 
 	for sm in $(submodules); do \
 		cd $$sm; \

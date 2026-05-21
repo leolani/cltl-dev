@@ -3,7 +3,7 @@ services:
     image: "rabbitmq:3.12-management"
     container_name: eliza-rabbitmq
     ports:
-      - "5672:5672"    # AMQP
+      - "5672:5672"    # AMQP — exposed for remote clients
       - "15672:15672"  # Management UI
     environment:
       - RABBITMQ_DEFAULT_USER=eliza
@@ -27,19 +27,24 @@ services:
         leolani: ../../cltl-requirements/leolani
       args:
         base_image: cltl/cltl-base:latest
+    command: ["python", "src/storage_main.py"]
     container_name: eliza-backend
     ports:
-      - "8001:8000"
+      - "8001:8000"    # Storage API — exposed for remote clients
     volumes:
-      - ./config:/cltl-backend/config
+      - ./config-server:/cltl-backend/config
       - ./storage:/cltl-backend/storage
     environment:
       - CLTL_LOGGING_CONFIG=/cltl-backend/config/logging.config
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     networks:
       - eliza-network
 
@@ -53,7 +58,7 @@ services:
         base_image: cltl/cltl-base:latest
     container_name: eliza-vad
     volumes:
-      - ./config:/cltl-vad/config
+      - ./config-server:/cltl-vad/config
       - ./storage:/cltl-vad/storage
     environment:
       - CLTL_LOGGING_CONFIG=/cltl-vad/config/logging.config
@@ -73,7 +78,7 @@ services:
         base_image: cltl/cltl-base:latest
     container_name: eliza-asr
     volumes:
-      - ./config:/cltl-asr/config
+      - ./config-server:/cltl-asr/config
       - ./storage:/cltl-asr/storage
     environment:
       - CLTL_LOGGING_CONFIG=/cltl-asr/config/logging.config
@@ -95,7 +100,7 @@ services:
     ports:
       - "8002:8000"
     volumes:
-      - ./config:/cltl-emissor-data/config
+      - ./config-server:/cltl-emissor-data/config
       - ./storage:/cltl-emissor-data/storage
     environment:
       - CLTL_LOGGING_CONFIG=/cltl-emissor-data/config/logging.config
@@ -115,7 +120,7 @@ services:
         base_image: cltl/cltl-base:latest
     container_name: eliza-eliza
     volumes:
-      - ./config:/cltl-eliza/config
+      - ./config-server:/cltl-eliza/config
       - ./storage:/cltl-eliza/storage
     environment:
       - CLTL_LOGGING_CONFIG=/cltl-eliza/config/logging.config
@@ -135,7 +140,7 @@ services:
         base_image: cltl/cltl-base:latest
     container_name: eliza-context
     volumes:
-      - ./config:/cltl-context/config
+      - ./config-server:/cltl-context/config
       - ./storage:/cltl-context/storage
     environment:
       - CLTL_LOGGING_CONFIG=/cltl-context/config/logging.config
@@ -157,7 +162,7 @@ services:
     ports:
       - "8003:8000"
     volumes:
-      - ./config:/cltl-chatui/config
+      - ./config-server:/cltl-chatui/config
       - ./storage:/cltl-chatui/storage
     environment:
       - CLTL_LOGGING_CONFIG=/cltl-chatui/config/logging.config
@@ -178,7 +183,7 @@ services:
         base_image: cltl/cltl-base:latest
     container_name: eliza-app
     volumes:
-      - ./config:/app/config
+      - ./config-server:/app/config
       - ./storage:/app/storage
     environment:
       - CLTL_LOGGING_CONFIG=/app/config/logging.config

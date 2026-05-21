@@ -3,7 +3,7 @@ import logging.config
 import os
 import time
 
-from app_service.context.service import ContextService
+from eliza_app_service.context.service import ContextService
 from cltl.backend.api.backend import Backend
 from cltl.backend.api.camera import CameraResolution, Camera
 from cltl.backend.api.microphone import Microphone

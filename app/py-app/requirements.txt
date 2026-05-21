@@ -1,91 +1,11 @@
-emissor @ git+https://github.com/leolani/emissor@38e4dea46b462f06a0bf9297a26541318617836d
-cltl.emissor-data[service,client] @ git+https://github.com/leolani/cltl-emissor-data@774b6fd936cf4c99401c7024a339dcadde855fac
-cltl.context[service] @ git+https://github.com/leolani/cltl-context@85ca4fd31c605e306cecb0325a1169541d73b007
-cltl.backend[host,service,impl] @ git+https://github.com/leolani/cltl-backend@895f961ed318c00142afe7e8fa7e6d0c5a6f8d3a
-cltl.vad @ git+https://github.com/leolani/cltl-vad@9bb366cca27399fd93b74285ca9d3af09cc37dc8
-cltl.asr[impl,service,whisper] @ git+https://github.com/leolani/cltl-asr@5078eee87087fc804275fae4ba8baebfd6061c26
-cltl.combot[service] @ git+https://github.com/leolani/cltl-combot@2a8eacdec494b4b0ab8dca91f121ff8afaa868f2
-cltl.chat-ui[service] @ git+https://github.com/leolani/cltl-chat-ui@56b613b13089c163c74949d26a3c916060b15a9a
-cltl.eliza[service] @ git+https://github.com/leolani/cltl-eliza@8e6fc6ea7c63d1c9bc1df7a123912cbc39405d93
+cltl.eliza-app
 
-# Voice Recognition/Generation
-webrtcvad==2.0.10
-openai-whisper==20230314
-
-# NN
-transformers==4.16.0
-tokenizers==0.11.6
-torch==1.13.1
-#torchvision 14.x is the last compatible with torch 1.x
-cffi==2.0.0
-jiwer==2.6.0
-
-# Numerics
-scikit-learn==1.0.2
-scipy==1.8.0
-numpy==1.24.2
-matplotlib==3.7.1
-
-# Audio/Video
-clang==11.0
-PyAudio==0.2.13
-# Pillow==8.0.1
-# TODO fix backend
-opencv-python==4.8.0.76
-pyobjc==9.2;sys_platform=='darwin'
-sounddevice==0.4.2
-soundfile==0.10.3.post1
-speechbrain==0.5.10
-
-# RDF support
-iribaker==0.2
-rdflib==6.1.1
-SPARQLWrapper==1.8.5
-
-# Utils
-cachetools==4.2.4
-fuzzywuzzy==0.18.0
-pycountry==20.7.3
-reverse-geocoder==1.5.1
-
-# REST/JSON/Messaging support
-Flask==1.1.2
-Werkzeug==2.0.3
-tornado==5.1.1
-jinja2==3.0.3
-connexion==2.7.0
-marshmallow==3.13.0
-marshmallow-dataclass==8.4.1
-marshmallow-enum==1.5.1
-marshmallow-union==0.1.15.post1
-typeguard==2.13.3
-apispec[yaml]==4.0.0
-asyncapi==0.14.0
-PyYAML==5.3.1
-typer==0.9.4
-uvicorn== 0.35.0
-apidaora==0.28.0
-markdown==3.3.3
-kombu==5.0.2
-simplejson==3.17.5
-jsonpickle==2.1.0
-itsdangerous==2.0.1
-
-# Python
-importlib_resources==5.2.2
-mock==4.0.3
-parameterized==0.8.1
-tqdm==4.62.3
-
-# Docker
-python_on_whales==0.78.0
-pydantic==2.11.9
-
-# Others
-jellyfish==0.9.0
-
-# Installation
-wheel==0.40.0
-setuptools-rust==1.7.0
-setuptools_scm==8.0.4
-setuptools==65.1.1
+emissor
+cltl.emissor-data[service,client]
+cltl.context[service]
+cltl.backend[host,service,impl]
+cltl.vad
+cltl.asr[impl,service,whisper]
+cltl.combot[service]
+cltl.chat-ui[service]
+cltl.eliza[service]

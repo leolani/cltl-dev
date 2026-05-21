@@ -21,7 +21,7 @@ artifacts := leolani
 .PHONY: clean
 clean:
 	$(info Clean $(project_name))
-	@rm -rf $(mirror) $(mirror_lock) $(artifacts) docker.lock docker.mirror.lock
+	@rm -rf $(mirror) $(mirror_lock) $(artifacts) docker.base.lock
 	@mkdir $(mirror) $(artifacts)
 
 $(mirror_lock): requirements.txt
@@ -43,14 +43,6 @@ install: docker
 .PHONY: docker
 docker: docker.base.lock
 
-docker.mirror.lock: $(mirror_lock)
-	DOCKER_BUILDKIT=1 docker build -t cltl/${project_name}-mirror:${project_version} -f Dockerfile.mirror .
-	@echo "${project_version}" > docker.mirror.lock
-
-docker.lock: docker.mirror.lock $(artifacts) $(wildcard $(artifacts)/*)
-	DOCKER_BUILDKIT=1 docker build -t cltl/${project_name}:${project_version} --build-arg image=${project_name}-mirror --build-arg version=$(shell cat docker.mirror.lock) .
-	@touch docker.lock
-
-docker.base.lock: docker.lock
-	DOCKER_BUILDKIT=1 docker build -t cltl/eliza-base:latest -f Dockerfile.base .
+docker.base.lock: requirements.txt
+	DOCKER_BUILDKIT=1 docker build -t cltl/cltl-base:latest -f Dockerfile.base .
 	@touch docker.base.lock
