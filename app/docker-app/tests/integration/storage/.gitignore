@@ -1,4 +1,7 @@
 *
 !.gitignore
 !.gitkeep
+!clean.sh
 !rabbitmq/.gitkeep
+!audio/.gitkeep
+!image/.gitkeep

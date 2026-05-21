@@ -1,2 +1,8 @@
 pytest>=7
 requests>=2.28
+
+# Audio integration tests (stub server + TTS)
+flask>=2.0
+gtts>=2.3
+pydub>=0.25
+# pydub requires ffmpeg on the host: brew install ffmpeg  (macOS) / apt install ffmpeg  (Linux)

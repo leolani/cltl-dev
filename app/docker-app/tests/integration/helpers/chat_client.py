@@ -10,12 +10,21 @@ class ChatClient:
     def __init__(self, base_url: str = "http://localhost:8003/chatui"):
         self._base_url = base_url.rstrip("/")
         self._session = requests.Session()
+        self.initial_sequence: int = 0
 
     def start_session(self) -> str:
-        """Create or retrieve the current chat session and return the chat id."""
+        """Create or retrieve the current chat session and return the chat id.
+
+        Also snapshots the current utterance count into self.initial_sequence so
+        that callers can start polling from after any pre-existing messages
+        (e.g. agent greeting sent before the test began).
+        """
         response = self._session.get(f"{self._base_url}/chat/current")
         _raise_for_status(response)
-        return response.json()["id"]
+        chat_id = response.json()["id"]
+        all_utterances = self.fetch_all(chat_id)
+        self.initial_sequence = len(all_utterances)
+        return chat_id
 
     def send(self, chat_id: str, text: str) -> None:
         """Send a user utterance to the active chat session."""

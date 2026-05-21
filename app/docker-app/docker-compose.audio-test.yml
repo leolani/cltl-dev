@@ -1,0 +1,33 @@
+# Compose override for audio integration tests.
+# Layer this on top of docker-compose.test.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml -f docker-compose.audio-test.yml up
+#
+# Replaces custom.config with audio.config for backend, vad, and asr — enabling the
+# mic thread, VAD, and ASR (Whisper) and pointing the backend to the stub audio server.
+# audio.config is mounted over custom.config so it is picked up by LocalConfigurationManager
+# without any code changes (ADDITIONAL_CONFIGS = ["config/custom.config", "config/credentials.config"]).
+# Adds extra_hosts to eliza-backend so it can reach the stub server on the host at port 9000.
+
+services:
+  eliza-backend:
+    volumes:
+      - ./config:/cltl-backend/config
+      - ./tests/integration/config/audio.config:/cltl-backend/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-backend/config/logging.config
+      - ./tests/integration/storage:/cltl-backend/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  eliza-vad:
+    volumes:
+      - ./config:/cltl-vad/config
+      - ./tests/integration/config/audio.config:/cltl-vad/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-vad/config/logging.config
+      - ./tests/integration/storage:/cltl-vad/storage
+
+  eliza-asr:
+    volumes:
+      - ./config:/cltl-asr/config
+      - ./tests/integration/config/audio.config:/cltl-asr/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-asr/config/logging.config
+      - ./tests/integration/storage:/cltl-asr/storage

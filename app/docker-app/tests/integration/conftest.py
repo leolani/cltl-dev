@@ -26,10 +26,19 @@ CHATUI_READY_URL = "http://localhost:8003/chatui/chat/current"
 STACK_STARTUP_TIMEOUT = 180  # seconds
 STACK_POLL_INTERVAL = 3  # seconds
 
+COMPOSE_AUDIO_OVERRIDE = _DOCKER_APP_DIR / "docker-compose.audio-test.yml"
+
 _COMPOSE_CMD = [
     "docker", "compose",
     "-f", str(COMPOSE_FILE),
     "-f", str(COMPOSE_TEST_OVERRIDE),
+]
+
+_COMPOSE_AUDIO_CMD = [
+    "docker", "compose",
+    "-f", str(COMPOSE_FILE),
+    "-f", str(COMPOSE_TEST_OVERRIDE),
+    "-f", str(COMPOSE_AUDIO_OVERRIDE),
 ]
 
 
@@ -72,26 +81,12 @@ def _wait_for_stack(timeout: float) -> None:
     )
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def docker_stack():
-    """Bring the full Eliza docker-compose stack up for the test session."""
+    """Bring the text-only Eliza docker-compose stack up for the test session."""
     subprocess.run(_COMPOSE_CMD + ["up", "-d", "--wait"], check=True)
     _wait_for_stack(STACK_STARTUP_TIMEOUT)
 
-    yield
-
-    subprocess.run(_COMPOSE_CMD + ["down"], check=True)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def dump_logs(docker_stack):
-    """Write all container logs to storage/docker.log after the session ends.
-
-    Runs after all tests but before docker_stack tears down the containers,
-    so logs are captured while containers are still running.
-    Always writes, not only on failure — useful for tracing the event flow
-    even when tests pass.
-    """
     yield
 
     log_path = _DOCKER_APP_DIR / "tests/integration/storage/docker.log"
@@ -103,6 +98,38 @@ def dump_logs(docker_stack):
             stderr=subprocess.STDOUT,
         )
     logger.info("Container logs written to %s", log_path)
+
+    subprocess.run(_COMPOSE_CMD + ["down"], check=True)
+
+
+@pytest.fixture(scope="session")
+def docker_stack_audio(stub_server_greeting):
+    """Bring the audio-enabled Eliza stack up for the audio test session.
+
+    Depends on stub_server_greeting so the stub is running before the stack
+    starts — the backend mic thread connects to the stub immediately after the
+    scenario is created, so the stub must be available at that point.
+
+    This fixture is NOT autouse — only audio tests request it explicitly.
+    Run audio tests in a separate session from text tests (they bind the same ports):
+      pytest tests/integration/test_audio_conversation.py
+    """
+    subprocess.run(_COMPOSE_AUDIO_CMD + ["up", "-d", "--wait"], check=True)
+    _wait_for_stack(STACK_STARTUP_TIMEOUT)
+
+    yield
+
+    log_path = _DOCKER_APP_DIR / "tests/integration/storage/docker_audio.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "w") as f:
+        subprocess.run(
+            _COMPOSE_AUDIO_CMD + ["logs", "--no-color"],
+            stdout=f,
+            stderr=subprocess.STDOUT,
+        )
+    logger.info("Audio stack logs written to %s", log_path)
+
+    subprocess.run(_COMPOSE_AUDIO_CMD + ["down"], check=True)
 
 
 # ---------------------------------------------------------------------------

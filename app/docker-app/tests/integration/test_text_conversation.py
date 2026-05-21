@@ -8,6 +8,9 @@ import pytest
 
 from tests.integration.helpers.chat_client import ChatClient
 
+# Ensure the text-only stack is started for every test in this module.
+pytestmark = pytest.mark.usefixtures("docker_stack")
+
 RESPONSE_TIMEOUT = 15.0  # seconds to wait for each agent reply
 
 
