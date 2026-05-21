@@ -1,0 +1,71 @@
+# Compose override for integration tests.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --wait
+#
+# Per service this override:
+#   - Keeps the shared ./config directory (default.config) from the base compose
+#   - Bind-mounts test/integration/config/custom.config over the shared one (file-level)
+#   - Bind-mounts tests/integration/config/logging.config over the shared one (file-level)
+#   - Redirects storage to tests/integration/storage/ to isolate test artefacts
+#
+# The production ./storage/ and ./config/logging.config are never touched by test runs.
+
+services:
+  rabbitmq:
+    volumes:
+      - ./tests/integration/storage/rabbitmq:/var/lib/rabbitmq
+
+  eliza-backend:
+    volumes:
+      - ./config:/cltl-backend/config
+      - ./tests/integration/config/custom.config:/cltl-backend/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-backend/config/logging.config
+      - ./tests/integration/storage:/cltl-backend/storage
+
+  eliza-vad:
+    volumes:
+      - ./config:/cltl-vad/config
+      - ./tests/integration/config/custom.config:/cltl-vad/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-vad/config/logging.config
+      - ./tests/integration/storage:/cltl-vad/storage
+
+  eliza-asr:
+    volumes:
+      - ./config:/cltl-asr/config
+      - ./tests/integration/config/custom.config:/cltl-asr/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-asr/config/logging.config
+      - ./tests/integration/storage:/cltl-asr/storage
+
+  eliza-emissor:
+    volumes:
+      - ./config:/cltl-emissor-data/config
+      - ./tests/integration/config/custom.config:/cltl-emissor-data/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-emissor-data/config/logging.config
+      - ./tests/integration/storage:/cltl-emissor-data/storage
+
+  eliza-eliza:
+    volumes:
+      - ./config:/cltl-eliza/config
+      - ./tests/integration/config/custom.config:/cltl-eliza/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-eliza/config/logging.config
+      - ./tests/integration/storage:/cltl-eliza/storage
+
+  eliza-context:
+    volumes:
+      - ./config:/cltl-context/config
+      - ./tests/integration/config/custom.config:/cltl-context/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-context/config/logging.config
+      - ./tests/integration/storage:/cltl-context/storage
+
+  eliza-chatui:
+    volumes:
+      - ./config:/cltl-chatui/config
+      - ./tests/integration/config/custom.config:/cltl-chatui/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-chatui/config/logging.config
+      - ./tests/integration/storage:/cltl-chatui/storage
+
+  eliza-app:
+    volumes:
+      - ./config:/app/config
+      - ./tests/integration/config/custom.config:/app/config/custom.config
+      - ./tests/integration/config/logging.config:/app/config/logging.config
+      - ./tests/integration/storage:/app/storage
