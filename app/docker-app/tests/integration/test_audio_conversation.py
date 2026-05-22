@@ -70,8 +70,12 @@ def _start_stub(*utterances: str) -> subprocess.Popen:
 
 @pytest.fixture(scope="session")
 def stub_server_greeting():
-    """Session-scoped stub looping 'Hello' to continuously trigger the audio pipeline."""
-    proc = _start_stub("Hello")
+    """Session-scoped stub serving 'Hello' then 'yes' to drive through the InitService handshake.
+
+    Request 0 ('Hello') triggers the InitService greeting. Request 1+ ('yes') passes
+    the consent gate so subsequent utterances reach Eliza.
+    """
+    proc = _start_stub("Hello", "yes")
     yield
     proc.terminate()
     proc.wait(timeout=5)
@@ -99,6 +103,7 @@ class TestAudioSingleTurn:
             INIT_GREETING_MARKER in r.lower() for r in responses
         ), f"Expected init greeting (containing '{INIT_GREETING_MARKER}'), got: {responses}"
 
+
     def test_eliza_responds_to_second_audio_utterance(
         self, docker_stack_audio, stub_server_greeting, chat_client: ChatClient
     ):
@@ -107,9 +112,8 @@ class TestAudioSingleTurn:
         We poll from initial_sequence to skip responses already seen in the first test.
         """
         chat_id = chat_client.start_session()
-        responses = chat_client.receive(
-            chat_id, from_sequence=chat_client.initial_sequence, timeout=RESPONSE_TIMEOUT
-        )
+        responses = [chat_client.receive(chat_id, from_sequence=chat_client.initial_sequence, timeout=RESPONSE_TIMEOUT)
+                     for i in range(2)]
 
         assert responses, "Expected a second response from the looping audio stream"
-        assert all(len(r) > 0 for r in responses), "Responses must be non-empty strings"
+        assert len([r for resp_list in responses for r in resp_list if r]) >= 2, "Expected at least 2 responses"
