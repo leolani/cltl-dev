@@ -18,24 +18,27 @@ from tests.integration.helpers.chat_client import ChatClient
 logger = logging.getLogger(__name__)
 
 _DOCKER_APP_DIR = Path(__file__).parent.parent.parent
+_INTEGRATION_DIR = Path(__file__).parent
 COMPOSE_FILE = _DOCKER_APP_DIR / "docker-compose.yml"
-COMPOSE_TEST_OVERRIDE = _DOCKER_APP_DIR / "docker-compose.test.yml"
+COMPOSE_TEST_OVERRIDE = _INTEGRATION_DIR / "docker-compose.test.yml"
 assert COMPOSE_FILE.exists(), f"Docker Compose file not found: {COMPOSE_FILE}"
 assert COMPOSE_TEST_OVERRIDE.exists(), f"Test compose override not found: {COMPOSE_TEST_OVERRIDE}"
 CHATUI_READY_URL = "http://localhost:8003/chatui/chat/current"
 STACK_STARTUP_TIMEOUT = 180  # seconds
 STACK_POLL_INTERVAL = 3  # seconds
 
-COMPOSE_AUDIO_OVERRIDE = _DOCKER_APP_DIR / "docker-compose.audio-test.yml"
+COMPOSE_AUDIO_OVERRIDE = _INTEGRATION_DIR / "docker-compose.audio-test.yml"
 
 _COMPOSE_CMD = [
     "docker", "compose",
+    "--project-directory", str(_DOCKER_APP_DIR),
     "-f", str(COMPOSE_FILE),
     "-f", str(COMPOSE_TEST_OVERRIDE),
 ]
 
 _COMPOSE_AUDIO_CMD = [
     "docker", "compose",
+    "--project-directory", str(_DOCKER_APP_DIR),
     "-f", str(COMPOSE_FILE),
     "-f", str(COMPOSE_TEST_OVERRIDE),
     "-f", str(COMPOSE_AUDIO_OVERRIDE),
