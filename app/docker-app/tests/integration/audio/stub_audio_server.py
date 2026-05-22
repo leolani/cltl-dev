@@ -6,21 +6,28 @@ Implements the same streaming protocol as cltl-backend's BackendServer:
   Content-Type: audio/L16; rate=16000; channels=1; frame_size=480
   Body: continuous stream of 960-byte raw PCM frames until EOF
 
+Each GET /audio serves the next utterance in the configured sequence. Once the
+sequence is exhausted the last utterance is repeated on every subsequent request.
+This allows the test to drive the backend mic thread through a specific conversation
+flow across successive reconnects.
+
 The stream is structured as:
   [600 ms silence] [gTTS speech resampled to 16 kHz mono int16] [600 ms silence]
 
 Silence padding is required by VAD:
-  - Pre-speech:  ≥ 600 ms so the sliding window initialises as non-speech
-  - Post-speech: ≥ 300 ms so the allow_gap threshold fires before stream EOF
+  - Pre-speech:  >= 600 ms so the sliding window initialises as non-speech
+  - Post-speech: >= 300 ms so the allow_gap threshold fires before stream EOF
 
 Usage:
-  python stub_audio_server.py "Hello, how are you?"  # serves on port 9000
-  python stub_audio_server.py --port 9001 "Text here"
+  python stub_audio_server.py "Hello"           # single utterance looped
+  python stub_audio_server.py "Hello" "yes" "Hello"  # three-step sequence
+  python stub_audio_server.py --port 9001 "Hello" "yes" "Hello"
 """
 import io
 import logging
 import struct
 import sys
+import threading
 
 from flask import Flask, Response
 from gtts import gTTS
@@ -37,6 +44,9 @@ SILENCE_PRE_MS = 600
 SILENCE_POST_MS = 600
 
 app = Flask(__name__)
+
+_request_lock = threading.Lock()
+_request_count = 0
 
 
 def _text_to_pcm(text: str) -> bytes:
@@ -85,7 +95,13 @@ def health():
 
 @app.route("/audio")
 def audio():
-    text = app.config["TEXT"]
+    global _request_count
+    with _request_lock:
+        idx = _request_count
+        _request_count += 1
+    utterances = app.config["UTTERANCES"]
+    text = utterances[min(idx, len(utterances) - 1)]
+    logger.info("Serving utterance %d: %r", idx, text)
     mime = f"audio/L16; rate={RATE}; channels={CHANNELS}; frame_size={FRAME_SIZE}"
     return Response(_generate_frames(text), mimetype=mime)
 
@@ -98,7 +114,7 @@ def main():
     parser.add_argument("--port", type=int, default=9000)
     parser.add_argument("text", nargs="*", default=["Hello"])
     args = parser.parse_args()
-    app.config["TEXT"] = " ".join(args.text)
+    app.config["UTTERANCES"] = args.text
     app.run(host="0.0.0.0", port=args.port, threaded=True)
 
 
