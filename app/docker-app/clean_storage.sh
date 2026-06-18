@@ -14,3 +14,5 @@ rm -f storage/image/*.pkl
 
 rm -rf storage/emissor/**/*
 rmdir storage/emissor/*
+
+rm -rf storage/rabbitmq/*
