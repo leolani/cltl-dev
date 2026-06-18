@@ -1,0 +1,33 @@
+# Compose override for client/server split — client-side integration tests.
+# Usage (after the server stack is running):
+#   docker compose --project-name eliza-csplit-client \
+#     -f docker-compose.client.yml \
+#     -f tests/integration/docker-compose.csplit-client-test.yml \
+#     up -d --wait
+#
+# Per service this override:
+#   - Keeps the shared ./config-client directory from the base compose
+#   - Bind-mounts tests/integration/config/logging.config
+#   - Redirects storage to tests/integration/storage-csplit-client/ to isolate test artefacts
+#
+# config-client/default.config already points storage_url at localhost:8001 and
+# the RabbitMQ server at localhost:5672 — both are correct for tests because the
+# server stack exposes those ports on the host.
+#
+# custom-client.config disables run_server (no microphone/camera access) so the
+# client backend can start in a Docker environment without physical devices.
+
+services:
+  eliza-backend:
+    volumes:
+      - ./config-client:/cltl-backend/config
+      - ./tests/integration/config/custom-client.config:/cltl-backend/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-backend/config/logging.config
+      - ./tests/integration/storage-csplit-client:/cltl-backend/storage
+
+  eliza-app:
+    volumes:
+      - ./config-client:/app/config
+      - ./tests/integration/config/custom-client.config:/app/config/custom.config
+      - ./tests/integration/config/logging.config:/app/config/logging.config
+      - ./tests/integration/storage-csplit-client:/app/storage

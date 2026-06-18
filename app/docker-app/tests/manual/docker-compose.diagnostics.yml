@@ -1,0 +1,21 @@
+services:
+  diagnostics:
+    build:
+      context: diagnostics/
+      additional_contexts:
+        leolani: ../../../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
+    image: cltl/eliza-diagnostics
+    container_name: eliza-diagnostics
+    volumes:
+      - ../../config-server:/app/config
+      - ./diagnostics/payloads:/app/payloads
+    environment:
+      - CLTL_LOGGING_CONFIG=/app/config/logging.config
+    networks:
+      - docker-app_eliza-network
+
+networks:
+  docker-app_eliza-network:
+    external: true    # created by docker-compose.server.yml

@@ -1,0 +1,29 @@
+# Compose override for client/server split — server-side audio integration tests.
+# Layer this on top of docker-compose.csplit-server-test.yml:
+#   docker compose --project-name eliza-csplit-server \
+#     -f docker-compose.server.yml \
+#     -f tests/integration/docker-compose.csplit-server-test.yml \
+#     -f tests/integration/docker-compose.csplit-audio-server-test.yml \
+#     up -d --wait
+#
+# Replaces custom.config with audio.config for VAD and ASR, enabling Whisper ASR
+# and the VAD pipeline on the server. All other services retain the text-test
+# overrides from docker-compose.csplit-server-test.yml.
+#
+# The server-side backend is a storage-only service (storage_main.py) and does
+# not need audio config — mic capture happens on the client side.
+
+services:
+  eliza-vad:
+    volumes:
+      - ./config-server:/cltl-vad/config
+      - ./tests/integration/config/audio.config:/cltl-vad/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-vad/config/logging.config
+      - ./tests/integration/storage-csplit-server:/cltl-vad/storage
+
+  eliza-asr:
+    volumes:
+      - ./config-server:/cltl-asr/config
+      - ./tests/integration/config/audio.config:/cltl-asr/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-asr/config/logging.config
+      - ./tests/integration/storage-csplit-server:/cltl-asr/storage

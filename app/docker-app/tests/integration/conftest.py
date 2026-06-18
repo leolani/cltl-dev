@@ -7,6 +7,7 @@ and a fresh chat session so they remain fully isolated from each other.
 """
 import logging
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -23,9 +24,18 @@ COMPOSE_FILE = _DOCKER_APP_DIR / "docker-compose.yml"
 COMPOSE_TEST_OVERRIDE = _INTEGRATION_DIR / "docker-compose.test.yml"
 assert COMPOSE_FILE.exists(), f"Docker Compose file not found: {COMPOSE_FILE}"
 assert COMPOSE_TEST_OVERRIDE.exists(), f"Test compose override not found: {COMPOSE_TEST_OVERRIDE}"
+assert (_DOCKER_APP_DIR / "docker-compose.server.yml").exists(), \
+    f"Server compose not found: {_DOCKER_APP_DIR / 'docker-compose.server.yml'}"
+assert (_DOCKER_APP_DIR / "docker-compose.client.yml").exists(), \
+    f"Client compose not found: {_DOCKER_APP_DIR / 'docker-compose.client.yml'}"
 CHATUI_READY_URL = "http://localhost:8003/chatui/chat/current"
+CLIENT_BACKEND_READY_URL = "http://localhost:9001/health"
 STACK_STARTUP_TIMEOUT = 180  # seconds
 STACK_POLL_INTERVAL = 3  # seconds
+
+_STUB_PORT = 9876
+_STUB_SCRIPT = _INTEGRATION_DIR / "audio" / "stub_audio_server.py"
+_STUB_READY_TIMEOUT = 15  # seconds
 
 COMPOSE_AUDIO_OVERRIDE = _INTEGRATION_DIR / "docker-compose.audio-test.yml"
 
@@ -133,6 +143,229 @@ def docker_stack_audio(stub_server_greeting):
     logger.info("Audio stack logs written to %s", log_path)
 
     subprocess.run(_COMPOSE_AUDIO_CMD + ["down"], check=True)
+
+
+# ---------------------------------------------------------------------------
+# Client/server split stack fixtures
+# ---------------------------------------------------------------------------
+
+_COMPOSE_CSPLIT_SERVER_CMD = [
+    "docker", "compose",
+    "--project-directory", str(_DOCKER_APP_DIR),
+    "--project-name", "eliza-csplit-server",
+    "-f", str(_DOCKER_APP_DIR / "docker-compose.server.yml"),
+    "-f", str(_INTEGRATION_DIR / "docker-compose.csplit-server-test.yml"),
+]
+
+_COMPOSE_CSPLIT_CLIENT_CMD = [
+    "docker", "compose",
+    "--project-directory", str(_DOCKER_APP_DIR),
+    "--project-name", "eliza-csplit-client",
+    "-f", str(_DOCKER_APP_DIR / "docker-compose.client.yml"),
+    "-f", str(_INTEGRATION_DIR / "docker-compose.csplit-client-test.yml"),
+]
+
+
+@pytest.fixture(scope="session")
+def csplit_server_stack():
+    """Bring the server side of the client/server split stack up for the test session."""
+    subprocess.run(_COMPOSE_CSPLIT_SERVER_CMD + ["up", "-d", "--wait"], check=True)
+    _wait_for_stack(STACK_STARTUP_TIMEOUT)
+
+    yield
+
+    log_path = _DOCKER_APP_DIR / "tests/integration/storage-csplit-server/docker-server.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "w") as f:
+        subprocess.run(
+            _COMPOSE_CSPLIT_SERVER_CMD + ["logs", "--no-color"],
+            stdout=f,
+            stderr=subprocess.STDOUT,
+        )
+    logger.info("csplit server logs written to %s", log_path)
+
+    subprocess.run(_COMPOSE_CSPLIT_SERVER_CMD + ["down"], check=True)
+
+
+def _wait_for_client_backend(timeout: float) -> None:
+    """Block until the client-side backend health endpoint responds."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            response = requests.get(CLIENT_BACKEND_READY_URL, timeout=2)
+            if response.status_code == 200:
+                logger.info("Client backend healthy at %s", CLIENT_BACKEND_READY_URL)
+                return
+        except requests.RequestException as e:
+            logger.debug("Client backend not yet ready: %s", e)
+        time.sleep(STACK_POLL_INTERVAL)
+    raise RuntimeError(
+        f"Client stack backend did not become healthy within {timeout}s "
+        f"({CLIENT_BACKEND_READY_URL}). Check container logs."
+    )
+
+
+@pytest.fixture(scope="session")
+def csplit_client_stack(csplit_server_stack):
+    """Bring the client side of the split stack up, after the server is ready.
+
+    Depends on csplit_server_stack so pytest guarantees the server stack (including
+    RabbitMQ on 5672 and storage backend on 8001) is running before the client starts.
+    Waits for the client backend health endpoint (localhost:9001) rather than the
+    ChatUI endpoint, which belongs to the server and would always return immediately.
+    """
+    subprocess.run(_COMPOSE_CSPLIT_CLIENT_CMD + ["up", "-d", "--wait"], check=True)
+    _wait_for_client_backend(STACK_STARTUP_TIMEOUT)
+
+    yield
+
+    log_path = _DOCKER_APP_DIR / "tests/integration/storage-csplit-client/docker-client.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "w") as f:
+        subprocess.run(
+            _COMPOSE_CSPLIT_CLIENT_CMD + ["logs", "--no-color"],
+            stdout=f,
+            stderr=subprocess.STDOUT,
+        )
+    logger.info("csplit client logs written to %s", log_path)
+
+    subprocess.run(_COMPOSE_CSPLIT_CLIENT_CMD + ["down"], check=True)
+
+
+@pytest.fixture(scope="session")
+def csplit_stack(csplit_client_stack):
+    """Combined fixture: server and client stacks are both running.
+
+    Tests should request this fixture rather than the individual halves.
+    csplit_client_stack already depends on csplit_server_stack, so requesting
+    csplit_stack transitively ensures both are up. Teardown order is the reverse:
+    client tears down before server.
+    """
+    yield
+
+
+# ---------------------------------------------------------------------------
+# Stub audio server helpers (shared by monolithic and csplit audio tests)
+# ---------------------------------------------------------------------------
+
+def _stub_is_ready() -> bool:
+    try:
+        r = requests.get(f"http://localhost:{_STUB_PORT}/health", timeout=1)
+        return r.status_code == 200
+    except requests.RequestException:
+        return False
+
+
+def _start_stub(*utterances: str) -> subprocess.Popen:
+    """Start the stub audio server serving *utterances* in sequence and wait until ready."""
+    proc = subprocess.Popen(
+        [sys.executable, str(_STUB_SCRIPT), "--port", str(_STUB_PORT), *utterances],
+    )
+    deadline = time.monotonic() + _STUB_READY_TIMEOUT
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise RuntimeError(
+                f"Stub audio server exited early (code {proc.returncode}). "
+                "Check that flask, gtts, and pydub are installed in the test venv."
+            )
+        if _stub_is_ready():
+            return proc
+        time.sleep(0.2)
+
+    proc.terminate()
+    raise RuntimeError(
+        f"Stub audio server did not become ready within {_STUB_READY_TIMEOUT}s "
+        f"(port {_STUB_PORT} — check it is not already in use)."
+    )
+
+
+@pytest.fixture(scope="session")
+def stub_server_greeting():
+    """Session-scoped stub serving 'Hello' then 'yes' to drive through the InitService handshake.
+
+    Request 0 ('Hello') triggers the InitService greeting. Request 1+ ('yes') passes
+    the consent gate so subsequent utterances reach Eliza.
+    """
+    proc = _start_stub("Hello", "yes")
+    yield
+    proc.terminate()
+    proc.wait(timeout=5)
+
+
+# ---------------------------------------------------------------------------
+# Client/server split audio stack fixtures
+# ---------------------------------------------------------------------------
+
+_COMPOSE_CSPLIT_AUDIO_SERVER_CMD = [
+    "docker", "compose",
+    "--project-directory", str(_DOCKER_APP_DIR),
+    "--project-name", "eliza-csplit-server",
+    "-f", str(_DOCKER_APP_DIR / "docker-compose.server.yml"),
+    "-f", str(_INTEGRATION_DIR / "docker-compose.csplit-server-test.yml"),
+    "-f", str(_INTEGRATION_DIR / "docker-compose.csplit-audio-server-test.yml"),
+]
+
+_COMPOSE_CSPLIT_AUDIO_CLIENT_CMD = [
+    "docker", "compose",
+    "--project-directory", str(_DOCKER_APP_DIR),
+    "--project-name", "eliza-csplit-client",
+    "-f", str(_DOCKER_APP_DIR / "docker-compose.client.yml"),
+    "-f", str(_INTEGRATION_DIR / "docker-compose.csplit-client-test.yml"),
+    "-f", str(_INTEGRATION_DIR / "docker-compose.csplit-audio-client-test.yml"),
+]
+
+
+@pytest.fixture(scope="session")
+def csplit_audio_server_stack(stub_server_greeting):
+    """Bring the audio-enabled server side of the split stack up.
+
+    Depends on stub_server_greeting so the stub is running before the server
+    stack starts — the client backend mic thread connects to the stub immediately
+    after the scenario is created, so the stub must be available at that point.
+    """
+    subprocess.run(_COMPOSE_CSPLIT_AUDIO_SERVER_CMD + ["up", "-d", "--wait"], check=True)
+    _wait_for_stack(STACK_STARTUP_TIMEOUT)
+
+    yield
+
+    log_path = _DOCKER_APP_DIR / "tests/integration/storage-csplit-server/docker-audio-server.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "w") as f:
+        subprocess.run(
+            _COMPOSE_CSPLIT_AUDIO_SERVER_CMD + ["logs", "--no-color"],
+            stdout=f,
+            stderr=subprocess.STDOUT,
+        )
+    logger.info("csplit audio server logs written to %s", log_path)
+
+    subprocess.run(_COMPOSE_CSPLIT_AUDIO_SERVER_CMD + ["down"], check=True)
+
+
+@pytest.fixture(scope="session")
+def csplit_audio_client_stack(csplit_audio_server_stack):
+    """Bring the audio-enabled client side of the split stack up, after the server is ready."""
+    subprocess.run(_COMPOSE_CSPLIT_AUDIO_CLIENT_CMD + ["up", "-d", "--wait"], check=True)
+    _wait_for_client_backend(STACK_STARTUP_TIMEOUT)
+
+    yield
+
+    log_path = _DOCKER_APP_DIR / "tests/integration/storage-csplit-client/docker-audio-client.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "w") as f:
+        subprocess.run(
+            _COMPOSE_CSPLIT_AUDIO_CLIENT_CMD + ["logs", "--no-color"],
+            stdout=f,
+            stderr=subprocess.STDOUT,
+        )
+    logger.info("csplit audio client logs written to %s", log_path)
+
+    subprocess.run(_COMPOSE_CSPLIT_AUDIO_CLIENT_CMD + ["down"], check=True)
+
+
+@pytest.fixture(scope="session")
+def csplit_audio_stack(csplit_audio_client_stack):
+    """Combined fixture: audio-enabled server and client stacks are both running."""
+    yield
 
 
 # ---------------------------------------------------------------------------

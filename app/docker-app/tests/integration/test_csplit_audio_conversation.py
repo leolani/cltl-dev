@@ -1,36 +1,37 @@
 """
-End-to-end integration tests for audio conversation flow.
+End-to-end integration tests for the audio pipeline in the client/server split deployment.
 
-Each test verifies the full audio pipeline:
+Verifies the full cross-stack audio flow:
 
-  Stub server → BackendService mic → AudioStorage → VAD → Whisper ASR
-  → cltl.topic.text_in → InitService → cltl.topic.text_out → ChatUI
+  Stub server (host:9876) → client eliza-backend mic thread
+  → uploads audio to server storage (localhost:8001)
+  → server VAD → server Whisper ASR → cltl.topic.text_in
+  → InitService → cltl.topic.text_out → ChatUI (localhost:8003)
 
-The stub loops "Hello". The first "Hello" recognised by ASR triggers the InitService,
-which responds with its greeting ("... Do you want to talk to me?"). That greeting is
-the agent's response to the first audio utterance and is what the tests assert on.
+The stub loops "Hello" then "yes". The first "Hello" recognised by ASR triggers
+the InitService greeting, which is what the test asserts on.
 
 ASR (Whisper) adds significant latency, so RESPONSE_TIMEOUT is set to 120 seconds.
+
+Run in a separate pytest session from all other test modules — all bind the same
+host ports (8003, 5672, 8001):
+  pytest tests/integration/test_csplit_audio_conversation.py
 """
 import pytest
 
 from tests.integration.helpers.chat_client import ChatClient
 
-RESPONSE_TIMEOUT = 120.0  # seconds — Whisper inference can take a while
+pytestmark = pytest.mark.usefixtures("csplit_audio_stack")
+
+RESPONSE_TIMEOUT = 120.0
 
 # The InitService greeting always ends with the configured greeting text.
-# This marker is present in every possible init response and cannot appear
-# in the stub utterance "Hello" itself.
 INIT_GREETING_MARKER = "do you want to talk to me"
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-class TestAudioSingleTurn:
+class TestCsplitAudioSingleTurn:
     def test_eliza_responds_to_spoken_greeting(
-        self, docker_stack_audio, stub_server_greeting, chat_client: ChatClient
+        self, csplit_audio_stack, stub_server_greeting, chat_client: ChatClient
     ):
         """The first spoken 'Hello' triggers the InitService greeting.
 
@@ -45,5 +46,3 @@ class TestAudioSingleTurn:
         assert any(
             INIT_GREETING_MARKER in r.lower() for r in responses
         ), f"Expected init greeting (containing '{INIT_GREETING_MARKER}'), got: {responses}"
-
-

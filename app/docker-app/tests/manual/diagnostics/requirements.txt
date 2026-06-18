@@ -1,0 +1,7 @@
+kombu
+requests
+cltl-combot
+cltl-backend
+cltl-vad
+cltl-asr
+emissor

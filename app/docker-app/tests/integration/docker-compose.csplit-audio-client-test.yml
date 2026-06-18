@@ -1,0 +1,23 @@
+# Compose override for client/server split — client-side audio integration tests.
+# Layer this on top of docker-compose.csplit-client-test.yml:
+#   docker compose --project-name eliza-csplit-client \
+#     -f docker-compose.client.yml \
+#     -f tests/integration/docker-compose.csplit-client-test.yml \
+#     -f tests/integration/docker-compose.csplit-audio-client-test.yml \
+#     up -d --wait
+#
+# Replaces custom-client.config with audio-client.config for the backend, enabling
+# the mic thread pointed at the stub audio server on the host (port 9876).
+# Adds extra_hosts so the container can resolve host.docker.internal.
+#
+# eliza-app needs no change — it has no mic thread.
+
+services:
+  eliza-backend:
+    volumes:
+      - ./config-client:/cltl-backend/config
+      - ./tests/integration/config/audio-client.config:/cltl-backend/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-backend/config/logging.config
+      - ./tests/integration/storage-csplit-client:/cltl-backend/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
