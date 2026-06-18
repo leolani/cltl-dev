@@ -20,13 +20,13 @@ services:
       - eliza-network
 
   eliza-backend:
-    image: cltl/eliza-backend
+    image: ghcr.io/leolani/cltl-backend:${VERSION:-latest}
     build:
       context: ../../cltl-backend
       additional_contexts:
         leolani: ../../cltl-requirements/leolani
       args:
-        base_image: cltl/cltl-base:latest
+        base_image: ghcr.io/leolani/cltl-base:latest
     command: ["python", "src/storage_main.py"]
     container_name: eliza-backend
     ports:
@@ -49,13 +49,13 @@ services:
       - eliza-network
 
   eliza-vad:
-    image: cltl/eliza-vad
+    image: ghcr.io/leolani/cltl-vad:${VERSION:-latest}
     build:
       context: ../../cltl-vad
       additional_contexts:
         leolani: ../../cltl-requirements/leolani
       args:
-        base_image: cltl/cltl-base:latest
+        base_image: ghcr.io/leolani/cltl-base:latest
     container_name: eliza-vad
     volumes:
       - ./config-server:/cltl-vad/config
@@ -69,13 +69,13 @@ services:
       - eliza-network
 
   eliza-asr:
-    image: cltl/eliza-asr
+    image: ghcr.io/leolani/cltl-asr:${VERSION:-latest}
     build:
       context: ../../cltl-asr
       additional_contexts:
         leolani: ../../cltl-requirements/leolani
       args:
-        base_image: cltl/cltl-base:latest
+        base_image: ghcr.io/leolani/cltl-base:latest
     container_name: eliza-asr
     volumes:
       - ./config-server:/cltl-asr/config
@@ -89,13 +89,13 @@ services:
       - eliza-network
 
   eliza-emissor:
-    image: cltl/eliza-emissor
+    image: ghcr.io/leolani/cltl-emissor-data:${VERSION:-latest}
     build:
       context: ../../cltl-emissor-data
       additional_contexts:
         leolani: ../../cltl-requirements/leolani
       args:
-        base_image: cltl/cltl-base:latest
+        base_image: ghcr.io/leolani/cltl-base:latest
     container_name: eliza-emissor
     ports:
       - "8002:8000"
@@ -111,13 +111,13 @@ services:
       - eliza-network
 
   eliza-eliza:
-    image: cltl/eliza-eliza
+    image: ghcr.io/leolani/cltl-eliza:${VERSION:-latest}
     build:
       context: ../../cltl-eliza
       additional_contexts:
         leolani: ../../cltl-requirements/leolani
       args:
-        base_image: cltl/cltl-base:latest
+        base_image: ghcr.io/leolani/cltl-base:latest
     container_name: eliza-eliza
     volumes:
       - ./config-server:/cltl-eliza/config

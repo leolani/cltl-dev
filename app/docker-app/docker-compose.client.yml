@@ -1,12 +1,12 @@
 services:
   eliza-backend:
-    image: cltl/eliza-backend
+    image: ghcr.io/leolani/cltl-backend:${VERSION:-latest}
     build:
       context: ../../cltl-backend
       additional_contexts:
         leolani: ../../cltl-requirements/leolani
       args:
-        base_image: cltl/cltl-base:latest
+        base_image: ghcr.io/leolani/cltl-base:latest
     container_name: eliza-client-backend
     ports:
       - "9001:8000"
@@ -27,13 +27,13 @@ services:
       - docker-app_eliza-network
 
   eliza-context:
-    image: cltl/eliza-context
+    image: ghcr.io/leolani/cltl-context:${VERSION:-latest}
     build:
       context: ../../cltl-context
       additional_contexts:
         leolani: ../../cltl-requirements/leolani
       args:
-        base_image: cltl/cltl-base:latest
+        base_image: ghcr.io/leolani/cltl-base:latest
     container_name: eliza-client-context
     volumes:
       - ./config-client:/cltl-context/config
@@ -47,13 +47,13 @@ services:
       - docker-app_eliza-network
 
   eliza-chatui:
-    image: cltl/eliza-chatui
+    image: ghcr.io/leolani/cltl-chat-ui:${VERSION:-latest}
     build:
       context: ../../cltl-chat-ui
       additional_contexts:
         leolani: ../../cltl-requirements/leolani
       args:
-        base_image: cltl/cltl-base:latest
+        base_image: ghcr.io/leolani/cltl-base:latest
     container_name: eliza-client-chatui
     ports:
       - "8003:8000"
@@ -69,14 +69,14 @@ services:
       - docker-app_eliza-network
 
   eliza-app:
-    image: cltl/eliza-app
+    image: ghcr.io/leolani/eliza-app:${VERSION:-latest}
     build:
       context: ..
       dockerfile: docker-app/app.Dockerfile
       additional_contexts:
         leolani: ../../cltl-requirements/leolani
       args:
-        base_image: cltl/cltl-base:latest
+        base_image: ghcr.io/leolani/cltl-base:latest
     container_name: eliza-client-app
     volumes:
       - ./config-client:/app/config

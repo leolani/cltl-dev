@@ -1,10 +1,14 @@
 # syntax = docker/dockerfile:1.4
 # Builds the app-level orchestration service.
-# Build context: app/ directory (requires cltl/cltl-base:latest to exist first)
+# Build context: app/ directory (requires ghcr.io/leolani/cltl-base:latest to exist first)
 # Named build context: leolani (supplied via --build-context or docker-compose additional_contexts)
 
-ARG base_image=cltl/cltl-base:latest
+ARG base_image=ghcr.io/leolani/cltl-base:latest
 FROM ${base_image}
+
+LABEL org.opencontainers.image.source="https://github.com/leolani/cltl-containers"
+LABEL org.opencontainers.image.description="Leolani Eliza App"
+LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
