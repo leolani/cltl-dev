@@ -17,11 +17,27 @@ git_remote ?= https://github.com/leolani
 
 include util/make/makefile.base.mk
 include util/make/makefile.component.mk
+include util/make/makefile.docker.mk
 include util/make/makefile.py.base.mk
 include util/make/makefile.git.mk
 
 .PHONY: build
 build: venv
+
+.PHONY: docker-ghcr-build
+docker-ghcr-build:
+	DOCKER_BUILDKIT=1 docker build \
+		--build-context leolani=${project_repo} \
+		--build-arg base_image=${docker_base} \
+		-f docker-app/app.Dockerfile \
+		-t ${ghcr_registry}/eliza-app:${docker_version} \
+		-t ${ghcr_registry}/eliza-app:latest \
+		.
+
+.PHONY: docker-ghcr-push
+docker-ghcr-push: docker-ghcr-build
+	docker push ${ghcr_registry}/eliza-app:${docker_version}
+	docker push ${ghcr_registry}/eliza-app:latest
 
 INTEGRATION_DIR = tests/integration
 

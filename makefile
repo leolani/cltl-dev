@@ -22,6 +22,14 @@ git_remote ?= https://github.com/leolani
 include util/make/makefile.parent.mk
 include util/make/makefile.git.mk
 
+.PHONY: docker-ghcr-build
+docker-ghcr-build:
+	$(MAKE) target=docker-ghcr-build
+
+.PHONY: docker-ghcr-push
+docker-ghcr-push:
+	$(MAKE) target=docker-ghcr-push
+
 
 submodules := $(shell git submodule | xargs -L1 | cut -f 2 -d ' ' | grep -v util | xargs)
 
