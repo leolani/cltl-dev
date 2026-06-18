@@ -46,3 +46,11 @@ docker: docker.base.lock
 docker.base.lock: requirements.txt
 	DOCKER_BUILDKIT=1 docker build -t ghcr.io/leolani/cltl-base:$(project_version) -t ghcr.io/leolani/cltl-base:latest -f Dockerfile.base .
 	@touch docker.base.lock
+
+.PHONY: docker-ghcr-build
+docker-ghcr-build: docker.base.lock
+
+.PHONY: docker-ghcr-push
+docker-ghcr-push: docker-ghcr-build
+	docker push ghcr.io/leolani/cltl-base:$(project_version)
+	docker push ghcr.io/leolani/cltl-base:latest
