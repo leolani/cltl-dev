@@ -4,9 +4,13 @@
 #   pypi  — external Python deps (changes with requirements.txt)
 #
 # cltl.* modules are installed per-component via --build-context leolani=...
-# Build: DOCKER_BUILDKIT=1 docker build -t cltl/cltl-base:latest -f Dockerfile.base .
+# Build: DOCKER_BUILDKIT=1 docker build -t ghcr.io/leolani/cltl-base:latest -f Dockerfile.base .
 
 FROM python:3.10 AS apt
+
+LABEL org.opencontainers.image.source="https://github.com/leolani/cltl-containers"
+LABEL org.opencontainers.image.description="Leolani base image"
+LABEL org.opencontainers.image.licenses="MIT"
 
 SHELL ["/bin/bash", "-c"]
 

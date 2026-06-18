@@ -44,5 +44,5 @@ install: docker
 docker: docker.base.lock
 
 docker.base.lock: requirements.txt
-	DOCKER_BUILDKIT=1 docker build -t cltl/cltl-base:latest -f Dockerfile.base .
+	DOCKER_BUILDKIT=1 docker build -t ghcr.io/leolani/cltl-base:$(project_version) -t ghcr.io/leolani/cltl-base:latest -f Dockerfile.base .
 	@touch docker.base.lock
