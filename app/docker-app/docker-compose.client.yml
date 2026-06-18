@@ -24,7 +24,49 @@ services:
       start_period: 30s
       retries: 3
     networks:
-      - eliza-client-network
+      - docker-app_eliza-network
+
+  eliza-context:
+    image: cltl/eliza-context
+    build:
+      context: ../../cltl-context
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
+    container_name: eliza-client-context
+    volumes:
+      - ./config-client:/cltl-context/config
+      - ./storage-client:/cltl-context/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-context/config/logging.config
+    depends_on:
+      eliza-backend:
+        condition: service_healthy
+    networks:
+      - docker-app_eliza-network
+
+  eliza-chatui:
+    image: cltl/eliza-chatui
+    build:
+      context: ../../cltl-chat-ui
+      additional_contexts:
+        leolani: ../../cltl-requirements/leolani
+      args:
+        base_image: cltl/cltl-base:latest
+    container_name: eliza-client-chatui
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./config-client:/cltl-chatui/config
+      - ./storage-client:/cltl-chatui/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-chatui/config/logging.config
+    depends_on:
+      eliza-backend:
+        condition: service_healthy
+    networks:
+      - docker-app_eliza-network
 
   eliza-app:
     image: cltl/eliza-app
@@ -41,14 +83,16 @@ services:
       - ./storage-client:/app/storage
     environment:
       - CLTL_LOGGING_CONFIG=/app/config/logging.config
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       eliza-backend:
         condition: service_healthy
+      eliza-context:
+        condition: service_started
+      eliza-chatui:
+        condition: service_started
     networks:
-      - eliza-client-network
+      - docker-app_eliza-network
 
 networks:
-  eliza-client-network:
-    driver: bridge
+  docker-app_eliza-network:
+    external: true    # created by docker-compose.server.yml
