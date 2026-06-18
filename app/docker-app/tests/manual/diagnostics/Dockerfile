@@ -1,4 +1,4 @@
-ARG base_image=cltl/cltl-base:latest
+ARG base_image=ghcr.io/leolani/cltl-base:latest
 FROM ${base_image}
 
 COPY --from=leolani . /leolani/

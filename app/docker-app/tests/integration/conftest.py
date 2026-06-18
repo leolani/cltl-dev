@@ -29,6 +29,7 @@ assert (_DOCKER_APP_DIR / "docker-compose.server.yml").exists(), \
 assert (_DOCKER_APP_DIR / "docker-compose.client.yml").exists(), \
     f"Client compose not found: {_DOCKER_APP_DIR / 'docker-compose.client.yml'}"
 CHATUI_READY_URL = "http://localhost:8003/chatui/chat/current"
+SERVER_BACKEND_READY_URL = "http://localhost:8001/health"
 CLIENT_BACKEND_READY_URL = "http://localhost:9001/health"
 STACK_STARTUP_TIMEOUT = 180  # seconds
 STACK_POLL_INTERVAL = 3  # seconds
@@ -58,6 +59,22 @@ _COMPOSE_AUDIO_CMD = [
 # ---------------------------------------------------------------------------
 # Stack lifecycle
 # ---------------------------------------------------------------------------
+
+def _compose_up(cmd: list) -> None:
+    """Tear down any leftover stack, then bring it up fresh.
+
+    A previous interrupted run may have left containers running (or a
+    compose down still in flight), causing RabbitMQ to receive a forced
+    shutdown mid-test.  Always down first to guarantee a clean slate.
+    """
+    subprocess.run(cmd + ["down", "--remove-orphans"], check=False)
+    result = subprocess.run(cmd + ["up", "-d", "--wait"])
+    if result.returncode != 0:
+        subprocess.run(cmd + ["logs", "--no-color"])
+        raise RuntimeError(
+            f"docker compose up failed (exit {result.returncode}). "
+            "Container logs printed above."
+        )
 
 def _scenario_is_ready() -> bool:
     """Return True only after ChatUI has received a ScenarioStarted event.
@@ -97,7 +114,7 @@ def _wait_for_stack(timeout: float) -> None:
 @pytest.fixture(scope="session")
 def docker_stack():
     """Bring the text-only Eliza docker-compose stack up for the test session."""
-    subprocess.run(_COMPOSE_CMD + ["up", "-d", "--wait"], check=True)
+    _compose_up(_COMPOSE_CMD)
     _wait_for_stack(STACK_STARTUP_TIMEOUT)
 
     yield
@@ -127,7 +144,7 @@ def docker_stack_audio(stub_server_greeting):
     Run audio tests in a separate session from text tests (they bind the same ports):
       pytest tests/integration/test_audio_conversation.py
     """
-    subprocess.run(_COMPOSE_AUDIO_CMD + ["up", "-d", "--wait"], check=True)
+    _compose_up(_COMPOSE_AUDIO_CMD)
     _wait_for_stack(STACK_STARTUP_TIMEOUT)
 
     yield
@@ -166,11 +183,21 @@ _COMPOSE_CSPLIT_CLIENT_CMD = [
 ]
 
 
+def _clean_rabbitmq_data(storage_dir: Path) -> None:
+    """Remove stale RabbitMQ mnesia data so each run starts with a clean broker."""
+    import shutil
+    mnesia_dir = storage_dir / "rabbitmq"
+    if mnesia_dir.exists():
+        shutil.rmtree(mnesia_dir)
+        logger.info("Removed stale RabbitMQ data at %s", mnesia_dir)
+
+
 @pytest.fixture(scope="session")
 def csplit_server_stack():
     """Bring the server side of the client/server split stack up for the test session."""
-    subprocess.run(_COMPOSE_CSPLIT_SERVER_CMD + ["up", "-d", "--wait"], check=True)
-    _wait_for_stack(STACK_STARTUP_TIMEOUT)
+    _clean_rabbitmq_data(_DOCKER_APP_DIR / "tests/integration/storage-csplit-server")
+    _compose_up(_COMPOSE_CSPLIT_SERVER_CMD)
+    _wait_for_server_backend(STACK_STARTUP_TIMEOUT)
 
     yield
 
@@ -187,22 +214,29 @@ def csplit_server_stack():
     subprocess.run(_COMPOSE_CSPLIT_SERVER_CMD + ["down"], check=True)
 
 
-def _wait_for_client_backend(timeout: float) -> None:
-    """Block until the client-side backend health endpoint responds."""
+def _wait_for_backend(url: str, label: str, timeout: float) -> None:
+    """Block until the given backend health endpoint responds with 200."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            response = requests.get(CLIENT_BACKEND_READY_URL, timeout=2)
+            response = requests.get(url, timeout=2)
             if response.status_code == 200:
-                logger.info("Client backend healthy at %s", CLIENT_BACKEND_READY_URL)
+                logger.info("%s healthy at %s", label, url)
                 return
         except requests.RequestException as e:
-            logger.debug("Client backend not yet ready: %s", e)
+            logger.debug("%s not yet ready: %s", label, e)
         time.sleep(STACK_POLL_INTERVAL)
     raise RuntimeError(
-        f"Client stack backend did not become healthy within {timeout}s "
-        f"({CLIENT_BACKEND_READY_URL}). Check container logs."
+        f"{label} did not become healthy within {timeout}s ({url}). Check container logs."
     )
+
+
+def _wait_for_server_backend(timeout: float) -> None:
+    _wait_for_backend(SERVER_BACKEND_READY_URL, "Server backend", timeout)
+
+
+def _wait_for_client_backend(timeout: float) -> None:
+    _wait_for_backend(CLIENT_BACKEND_READY_URL, "Client backend", timeout)
 
 
 @pytest.fixture(scope="session")
@@ -212,9 +246,9 @@ def csplit_client_stack(csplit_server_stack):
     Depends on csplit_server_stack so pytest guarantees the server stack (including
     RabbitMQ on 5672 and storage backend on 8001) is running before the client starts.
     Waits for the client backend health endpoint (localhost:9001) rather than the
-    ChatUI endpoint, which belongs to the server and would always return immediately.
+    ChatUI scenario endpoint, which requires both stacks to be fully connected.
     """
-    subprocess.run(_COMPOSE_CSPLIT_CLIENT_CMD + ["up", "-d", "--wait"], check=True)
+    _compose_up(_COMPOSE_CSPLIT_CLIENT_CMD)
     _wait_for_client_backend(STACK_STARTUP_TIMEOUT)
 
     yield
@@ -323,8 +357,9 @@ def csplit_audio_server_stack(stub_server_greeting):
     stack starts — the client backend mic thread connects to the stub immediately
     after the scenario is created, so the stub must be available at that point.
     """
-    subprocess.run(_COMPOSE_CSPLIT_AUDIO_SERVER_CMD + ["up", "-d", "--wait"], check=True)
-    _wait_for_stack(STACK_STARTUP_TIMEOUT)
+    _clean_rabbitmq_data(_DOCKER_APP_DIR / "tests/integration/storage-csplit-server")
+    _compose_up(_COMPOSE_CSPLIT_AUDIO_SERVER_CMD)
+    _wait_for_server_backend(STACK_STARTUP_TIMEOUT)
 
     yield
 
@@ -344,7 +379,7 @@ def csplit_audio_server_stack(stub_server_greeting):
 @pytest.fixture(scope="session")
 def csplit_audio_client_stack(csplit_audio_server_stack):
     """Bring the audio-enabled client side of the split stack up, after the server is ready."""
-    subprocess.run(_COMPOSE_CSPLIT_AUDIO_CLIENT_CMD + ["up", "-d", "--wait"], check=True)
+    _compose_up(_COMPOSE_CSPLIT_AUDIO_CLIENT_CMD)
     _wait_for_client_backend(STACK_STARTUP_TIMEOUT)
 
     yield

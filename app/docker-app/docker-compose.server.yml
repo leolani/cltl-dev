@@ -2,6 +2,7 @@ services:
   rabbitmq:
     image: "rabbitmq:3.12-management"
     container_name: eliza-rabbitmq
+    hostname: rabbitmq
     ports:
       - "5672:5672"    # AMQP — exposed for remote clients
       - "15672:15672"  # Management UI
@@ -102,4 +103,5 @@ services:
 
 networks:
   eliza-network:
+    name: eliza-network
     driver: bridge

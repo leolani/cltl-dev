@@ -18,7 +18,7 @@ services:
       start_period: 30s
       retries: 3
     networks:
-      - docker-app_eliza-network
+      - eliza-network
 
   eliza-context:
     image: ghcr.io/leolani/cltl-context:${VERSION:-latest}
@@ -32,7 +32,7 @@ services:
       eliza-backend:
         condition: service_healthy
     networks:
-      - docker-app_eliza-network
+      - eliza-network
 
   eliza-chatui:
     image: ghcr.io/leolani/cltl-chat-ui:${VERSION:-latest}
@@ -48,7 +48,7 @@ services:
       eliza-backend:
         condition: service_healthy
     networks:
-      - docker-app_eliza-network
+      - eliza-network
 
   eliza-app:
     image: ghcr.io/leolani/eliza-app:${VERSION:-latest}
@@ -66,8 +66,8 @@ services:
       eliza-chatui:
         condition: service_started
     networks:
-      - docker-app_eliza-network
+      - eliza-network
 
 networks:
-  docker-app_eliza-network:
+  eliza-network:
     external: true    # created by docker-compose.server.yml

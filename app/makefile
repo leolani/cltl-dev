@@ -45,21 +45,24 @@ INTEGRATION_DIR = tests/integration
         test-integration-audio test-integration-csplit-audio \
         test-integration
 
+# To enable verbose debug output, run: make test-integration-* PYTEST_FLAGS="-v --log-cli-level=DEBUG"
+PYTEST_FLAGS ?= -v
+
 test-integration-text:
 	cd docker-app && source ../venv/bin/activate && \
-		pytest $(INTEGRATION_DIR)/test_text_conversation.py -v
+		pytest $(INTEGRATION_DIR)/test_text_conversation.py $(PYTEST_FLAGS)
 
 test-integration-csplit-text:
 	cd docker-app && source ../venv/bin/activate && \
-		pytest $(INTEGRATION_DIR)/test_csplit_text_conversation.py -v
+		pytest $(INTEGRATION_DIR)/test_csplit_text_conversation.py $(PYTEST_FLAGS)
 
 test-integration-audio:
 	cd docker-app && source ../venv/bin/activate && \
-		pytest $(INTEGRATION_DIR)/test_audio_conversation.py -v
+		pytest $(INTEGRATION_DIR)/test_audio_conversation.py $(PYTEST_FLAGS)
 
 test-integration-csplit-audio:
 	cd docker-app && source ../venv/bin/activate && \
-		pytest $(INTEGRATION_DIR)/test_csplit_audio_conversation.py -v
+		pytest $(INTEGRATION_DIR)/test_csplit_audio_conversation.py $(PYTEST_FLAGS)
 
 test-integration: test-integration-text test-integration-csplit-text \
                   test-integration-audio test-integration-csplit-audio
