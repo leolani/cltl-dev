@@ -140,7 +140,9 @@ after all seven component services above are healthy.
 
 ## Network
 
-All services join the `eliza-network` bridge network. Inter-service hostnames match the
+### Monolithic stack (`docker-compose.yml`)
+
+All services join a single `eliza-network` bridge network. Inter-service hostnames match the
 `container_name` values (e.g. `rabbitmq`, `eliza-backend`). These names are already used in
 `config/default.config`:
 
@@ -151,6 +153,52 @@ server: amqp://eliza:eliza123@rabbitmq:5672/
 [cltl.backend]
 server_audio_url: http://eliza-backend:8000/host
 ```
+
+### Client/server split (`docker-compose.server.yml` + `docker-compose.client.yml`)
+
+The two stacks use **independent** Docker networks and communicate only through the server's
+exposed host ports:
+
+| Server port (host) | Purpose |
+|---|---|
+| `5672` | RabbitMQ AMQP — client services subscribe and publish here |
+| `8001` | Storage REST API — client backend uploads audio/image here |
+
+**Server stack** creates `eliza-network` for its own internal service-to-service communication.
+It does not share this network with the client stack.
+
+**Client stack** creates `eliza-client-network` as its own isolated bridge. All four client
+services (`eliza-backend`, `eliza-context`, `eliza-chatui`, `eliza-app`) have
+`extra_hosts: host.docker.internal:host-gateway` so they can resolve the server's host
+address on Linux. On macOS/Windows Docker Desktop this name is resolved automatically and the
+`extra_hosts` entry is a harmless no-op.
+
+#### Same-machine deployment (local testing)
+
+No configuration change is needed. The server's ports (5672, 8001) are exposed on the host, and
+`host.docker.internal` inside each client container resolves to that host. Start the server
+stack first, then the client stack:
+
+```bash
+docker compose -f docker-compose.server.yml up -d --wait
+docker compose -f docker-compose.client.yml up -d --wait
+```
+
+#### Different-machine deployment (production)
+
+Edit `config-client/custom.config` and replace `host.docker.internal` with the server machine's
+IP address or hostname:
+
+```ini
+[cltl.event.kombu]
+server: amqp://eliza:eliza123@<SERVER_IP>:5672/
+
+[cltl.backend.remote_storage]
+storage_url: http://<SERVER_IP>:8001/storage
+```
+
+Ensure TCP ports 5672 and 8001 are reachable from the client machine (check firewall rules on
+the server side). The two stacks can then be started independently on their respective machines.
 
 ## Build
 

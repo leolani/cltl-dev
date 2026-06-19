@@ -18,7 +18,7 @@ services:
       start_period: 30s
       retries: 3
     networks:
-      - eliza-network
+      - eliza-client-network
 
   eliza-context:
     image: ghcr.io/leolani/cltl-context:${VERSION:-latest}
@@ -28,11 +28,13 @@ services:
       - ./storage-client:/cltl-context/storage
     environment:
       - CLTL_LOGGING_CONFIG=/cltl-context/config/logging.config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       eliza-backend:
         condition: service_healthy
     networks:
-      - eliza-network
+      - eliza-client-network
 
   eliza-chatui:
     image: ghcr.io/leolani/cltl-chat-ui:${VERSION:-latest}
@@ -44,11 +46,13 @@ services:
       - ./storage-client:/cltl-chatui/storage
     environment:
       - CLTL_LOGGING_CONFIG=/cltl-chatui/config/logging.config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       eliza-backend:
         condition: service_healthy
     networks:
-      - eliza-network
+      - eliza-client-network
 
   eliza-app:
     image: ghcr.io/leolani/eliza-app:${VERSION:-latest}
@@ -58,6 +62,8 @@ services:
       - ./storage-client:/app/storage
     environment:
       - CLTL_LOGGING_CONFIG=/app/config/logging.config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       eliza-backend:
         condition: service_healthy
@@ -66,8 +72,8 @@ services:
       eliza-chatui:
         condition: service_started
     networks:
-      - eliza-network
+      - eliza-client-network
 
 networks:
-  eliza-network:
-    external: true    # created by docker-compose.server.yml
+  eliza-client-network:
+    driver: bridge
