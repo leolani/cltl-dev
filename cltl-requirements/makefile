@@ -21,7 +21,7 @@ artifacts := leolani
 .PHONY: clean
 clean:
 	$(info Clean $(project_name))
-	@rm -rf $(mirror) $(mirror_lock) $(artifacts) docker.base.lock
+	@rm -rf $(mirror) $(mirror_lock) $(artifacts) docker.base.lock docker.slim.lock
 	@mkdir $(mirror) $(artifacts)
 
 $(mirror_lock): requirements.txt
@@ -54,3 +54,15 @@ docker-ghcr-build: docker.base.lock
 docker-ghcr-push: docker-ghcr-build
 	docker push ghcr.io/leolani/cltl-base:$(project_version)
 	docker push ghcr.io/leolani/cltl-base:latest
+
+docker.slim.lock: requirements.slim.txt
+	DOCKER_BUILDKIT=1 docker build -t ghcr.io/leolani/cltl-base-slim:$(project_version) -t ghcr.io/leolani/cltl-base-slim:latest -f Dockerfile.slim .
+	@touch docker.slim.lock
+
+.PHONY: docker-slim
+docker-slim: docker.slim.lock
+
+.PHONY: docker-slim-ghcr-push
+docker-slim-ghcr-push: docker-slim
+	docker push ghcr.io/leolani/cltl-base-slim:$(project_version)
+	docker push ghcr.io/leolani/cltl-base-slim:latest

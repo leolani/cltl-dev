@@ -1,0 +1,30 @@
+# syntax = docker/dockerfile:1.2
+# Slim base image for client-side components (cltl.combot, cltl.backend, cltl.chat-ui,
+# cltl.emissor-data, emissor) that run inside Docker without audio/video capture hardware.
+# No PyAudio, portaudio, ML frameworks, or NLP tools.
+#
+# Build: DOCKER_BUILDKIT=1 docker build -t ghcr.io/leolani/cltl-base-slim:latest -f Dockerfile.slim .
+
+FROM python:3.10-slim AS apt
+
+LABEL org.opencontainers.image.source="https://github.com/leolani/cltl-containers"
+LABEL org.opencontainers.image.description="Leolani slim base image (client-side components)"
+LABEL org.opencontainers.image.licenses="MIT"
+
+SHELL ["/bin/bash", "-c"]
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libsndfile1 \
+        libsm6 \
+        libxext6 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+
+FROM apt AS pypi
+
+COPY requirements.slim.txt ./
+
+RUN --mount=type=cache,mode=0755,target=/root/.cache/pip \
+    pip install --upgrade pip && \
+    pip install -r requirements.slim.txt && \
+    find /usr/local/lib/python3.10 -type d -name __pycache__ -exec rm -rf {} +
