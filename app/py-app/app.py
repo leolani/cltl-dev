@@ -13,7 +13,7 @@ from cltl_service.asr.container import ASRContainer
 from cltl_service.backend.backend_container import BackendContainer
 from cltl_service.chatui.container import ChatUIContainer
 from cltl_service.combot.event_log.service import EventLogService
-from cltl_service.context.container import ElizaComponentsContainer
+from cltl_service.context_container import ContextComponentsContainer
 from cltl_service.eliza.container import ElizaContainer
 from cltl_service.emissordata.container import EmissorStorageContainer
 from cltl_service.vad.container import VADContainer
@@ -66,7 +66,7 @@ class InfraContainer(_InfraContainer):
 
 
 class ApplicationContainer(InfraContainer,
-                           ElizaContainer, ElizaComponentsContainer,
+                           ElizaContainer, ContextComponentsContainer,
                            ChatUIContainer,
                            ASRContainer, VADContainer,
                            EmissorStorageContainer, BackendContainer):
