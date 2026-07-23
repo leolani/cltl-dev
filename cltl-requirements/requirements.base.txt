@@ -34,11 +34,8 @@ clang==11.0
 PyAudio==0.2.13
 # Pillow==8.0.1
 # TODO fix backend
-playsound==1.2.2
 pydub==0.25.1
 opencv-python==4.8.0.76
-pyobjc==9.2;sys_platform=='darwin'
-sounddevice==0.4.2
 soundfile==0.10.3.post1
 speechbrain==0.5.10
 

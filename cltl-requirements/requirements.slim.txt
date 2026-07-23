@@ -24,6 +24,7 @@ cachetools==4.2.4
 
 # Audio file I/O (no device access)
 soundfile==0.10.3.post1
+pydub==0.25.1
 
 # Video / image file I/O (no device access)
 opencv-python-headless==4.8.0.76

@@ -41,17 +41,20 @@ $(artifacts):
 install: docker
 
 .PHONY: docker
-docker: docker.base.lock
+docker: docker.base.lock docker.slim.lock
 
 docker.base.lock: requirements.txt
 	DOCKER_BUILDKIT=1 docker build -t ghcr.io/leolani/cltl-base:$(project_version) -t ghcr.io/leolani/cltl-base:latest -f Dockerfile.base .
 	@touch docker.base.lock
 
 .PHONY: docker-ghcr-build
-docker-ghcr-build: docker.base.lock
+docker-ghcr-build: docker
 
 .PHONY: docker-ghcr-push
-docker-ghcr-push: docker-ghcr-build
+docker-ghcr-push: docker-ghcr-base-push docker-ghcr-slim-push
+
+.PHONY: docker-ghcr-base-push
+docker-ghcr-base-push: docker-ghcr-build
 	docker push ghcr.io/leolani/cltl-base:$(project_version)
 	docker push ghcr.io/leolani/cltl-base:latest
 
@@ -62,7 +65,7 @@ docker.slim.lock: requirements.slim.txt
 .PHONY: docker-slim
 docker-slim: docker.slim.lock
 
-.PHONY: docker-slim-ghcr-push
+.PHONY: docker-ghcr-slim-push
 docker-slim-ghcr-push: docker-slim
 	docker push ghcr.io/leolani/cltl-base-slim:$(project_version)
 	docker push ghcr.io/leolani/cltl-base-slim:latest
