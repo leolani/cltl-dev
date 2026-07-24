@@ -4,7 +4,7 @@ End-to-end integration tests for the client/server split deployment.
 Exercises the same text conversation scenarios as test_text_conversation.py
 but against the two-stack client/server split deployment:
 
-  Client eliza-app → localhost:5672 (RabbitMQ on server stack)
+  Client eliza-context → localhost:5672 (RabbitMQ on server stack)
   → ElizaService (server) → RabbitMQ → ChatUI (server)
   → HTTP GET localhost:8003 (host)
 

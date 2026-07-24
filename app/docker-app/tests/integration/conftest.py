@@ -60,21 +60,43 @@ _COMPOSE_AUDIO_CMD = [
 # Stack lifecycle
 # ---------------------------------------------------------------------------
 
+_UP_RETRIES = 5
+_UP_RETRY_DELAY = 3  # seconds
+
+
 def _compose_up(cmd: list) -> None:
     """Tear down any leftover stack, then bring it up fresh.
 
     A previous interrupted run may have left containers running (or a
     compose down still in flight), causing RabbitMQ to receive a forced
     shutdown mid-test.  Always down first to guarantee a clean slate.
+
+    A stack torn down moments ago (by a different Compose project reusing the
+    same host port, e.g. RabbitMQ's 5672) can still fail the first `up` with
+    "port is already allocated" — Docker's userland-proxy/iptables cleanup for
+    the old container is asynchronous and can lag behind `down`'s exit. Retry
+    with a short delay rather than failing immediately on that transient race.
     """
     subprocess.run(cmd + ["down", "--remove-orphans"], check=False)
-    result = subprocess.run(cmd + ["up", "-d", "--wait"])
-    if result.returncode != 0:
-        subprocess.run(cmd + ["logs", "--no-color"])
-        raise RuntimeError(
-            f"docker compose up failed (exit {result.returncode}). "
-            "Container logs printed above."
-        )
+
+    for attempt in range(1, _UP_RETRIES + 1):
+        result = subprocess.run(cmd + ["up", "-d", "--wait"])
+        if result.returncode == 0:
+            return
+        if attempt < _UP_RETRIES:
+            logger.warning(
+                "docker compose up failed (exit %s), attempt %d/%d — "
+                "retrying in %ds (likely a port-release race from a just-torn-down stack)",
+                result.returncode, attempt, _UP_RETRIES, _UP_RETRY_DELAY,
+            )
+            subprocess.run(cmd + ["down", "--remove-orphans"], check=False)
+            time.sleep(_UP_RETRY_DELAY)
+
+    subprocess.run(cmd + ["logs", "--no-color"])
+    raise RuntimeError(
+        f"docker compose up failed (exit {result.returncode}) after {_UP_RETRIES} attempts. "
+        "Container logs printed above."
+    )
 
 def _scenario_is_ready() -> bool:
     """Return True only after ChatUI has received a ScenarioStarted event.

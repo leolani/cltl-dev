@@ -1,7 +1,7 @@
 services:
   eliza-backend:
     image: ghcr.io/leolani/cltl-backend:${VERSION:-latest}
-    container_name: eliza-client-backend
+    container_name: ${COMPOSE_PROJECT_NAME}-backend
     ports:
       - "9001:8000"
     volumes:
@@ -22,7 +22,7 @@ services:
 
   eliza-context:
     image: ghcr.io/leolani/cltl-context:${VERSION:-latest}
-    container_name: eliza-client-context
+    container_name: ${COMPOSE_PROJECT_NAME}-context
     volumes:
       - ./config-client:/cltl-context/config
       - ./storage-client:/cltl-context/storage
@@ -38,7 +38,7 @@ services:
 
   eliza-chatui:
     image: ghcr.io/leolani/cltl-chat-ui:${VERSION:-latest}
-    container_name: eliza-client-chatui
+    container_name: ${COMPOSE_PROJECT_NAME}-chatui
     ports:
       - "8003:8000"
     volumes:
@@ -51,26 +51,6 @@ services:
     depends_on:
       eliza-backend:
         condition: service_healthy
-    networks:
-      - eliza-client-network
-
-  eliza-app:
-    image: ghcr.io/leolani/eliza-app:${VERSION:-latest}
-    container_name: eliza-client-app
-    volumes:
-      - ./config-client:/app/config
-      - ./storage-client:/app/storage
-    environment:
-      - CLTL_LOGGING_CONFIG=/app/config/logging.config
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      eliza-backend:
-        condition: service_healthy
-      eliza-context:
-        condition: service_started
-      eliza-chatui:
-        condition: service_started
     networks:
       - eliza-client-network
 

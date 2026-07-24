@@ -1,7 +1,7 @@
 services:
   rabbitmq:
     image: "rabbitmq:3.12-management"
-    container_name: eliza-rabbitmq
+    container_name: ${COMPOSE_PROJECT_NAME}-rabbitmq
     ports:
       - "5672:5672"    # AMQP
       - "15672:15672"  # Management UI
@@ -21,7 +21,7 @@ services:
 
   eliza-backend:
     image: ghcr.io/leolani/cltl-backend:${VERSION:-latest}
-    container_name: eliza-backend
+    container_name: ${COMPOSE_PROJECT_NAME}-backend
     ports:
       - "8001:8000"
     volumes:
@@ -39,7 +39,7 @@ services:
 
   eliza-vad:
     image: ghcr.io/leolani/cltl-vad:${VERSION:-latest}
-    container_name: eliza-vad
+    container_name: ${COMPOSE_PROJECT_NAME}-vad
     volumes:
       - ./config:/cltl-vad/config
       - ./storage:/cltl-vad/storage
@@ -53,7 +53,7 @@ services:
 
   eliza-asr:
     image: ghcr.io/leolani/cltl-asr:${VERSION:-latest}
-    container_name: eliza-asr
+    container_name: ${COMPOSE_PROJECT_NAME}-asr
     volumes:
       - ./config:/cltl-asr/config
       - ./storage:/cltl-asr/storage
@@ -67,7 +67,7 @@ services:
 
   eliza-emissor:
     image: ghcr.io/leolani/cltl-emissor-data:${VERSION:-latest}
-    container_name: eliza-emissor
+    container_name: ${COMPOSE_PROJECT_NAME}-emissor
     ports:
       - "8002:8000"
     volumes:
@@ -83,7 +83,7 @@ services:
 
   eliza-eliza:
     image: ghcr.io/leolani/cltl-eliza:${VERSION:-latest}
-    container_name: eliza-eliza
+    container_name: ${COMPOSE_PROJECT_NAME}-eliza
     volumes:
       - ./config:/cltl-eliza/config
       - ./storage:/cltl-eliza/storage
@@ -97,42 +97,12 @@ services:
 
   eliza-context:
     image: ghcr.io/leolani/cltl-context:${VERSION:-latest}
-    container_name: eliza-context
+    container_name: ${COMPOSE_PROJECT_NAME}-context
     volumes:
       - ./config:/cltl-context/config
       - ./storage:/cltl-context/storage
     environment:
       - CLTL_LOGGING_CONFIG=/cltl-context/config/logging.config
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    networks:
-      - eliza-network
-
-  eliza-chatui:
-    image: ghcr.io/leolani/cltl-chat-ui:${VERSION:-latest}
-    container_name: eliza-chatui
-    ports:
-      - "8003:8000"
-    volumes:
-      - ./config:/cltl-chatui/config
-      - ./storage:/cltl-chatui/storage
-    environment:
-      - CLTL_LOGGING_CONFIG=/cltl-chatui/config/logging.config
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    networks:
-      - eliza-network
-
-  eliza-app:
-    image: ghcr.io/leolani/eliza-app:${VERSION:-latest}
-    container_name: eliza-app
-    volumes:
-      - ./config:/app/config
-      - ./storage:/app/storage
-    environment:
-      - CLTL_LOGGING_CONFIG=/app/config/logging.config
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -146,9 +116,21 @@ services:
         condition: service_healthy
       eliza-eliza:
         condition: service_healthy
-      eliza-context:
-        condition: service_healthy
-      eliza-chatui:
+    networks:
+      - eliza-network
+
+  eliza-chatui:
+    image: ghcr.io/leolani/cltl-chat-ui:${VERSION:-latest}
+    container_name: ${COMPOSE_PROJECT_NAME}-chatui
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./config:/cltl-chatui/config
+      - ./storage:/cltl-chatui/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-chatui/config/logging.config
+    depends_on:
+      rabbitmq:
         condition: service_healthy
     networks:
       - eliza-network

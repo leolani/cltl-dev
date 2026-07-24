@@ -15,7 +15,8 @@
 # server stack exposes those ports on the host.
 #
 # custom-client.config disables run_server (no microphone/camera access) so the
-# client backend can start in a Docker environment without physical devices.
+# client backend can start in a Docker environment without physical devices, and
+# carries the [cltl.context]/[cltl.keyword] overrides consumed by eliza-context.
 
 services:
   eliza-backend:
@@ -25,9 +26,9 @@ services:
       - ./tests/integration/config/logging.config:/cltl-backend/config/logging.config
       - ./tests/integration/storage-csplit-client:/cltl-backend/storage
 
-  eliza-app:
+  eliza-context:
     volumes:
-      - ./config-client:/app/config
-      - ./tests/integration/config/custom-client.config:/app/config/custom.config
-      - ./tests/integration/config/logging.config:/app/config/logging.config
-      - ./tests/integration/storage-csplit-client:/app/storage
+      - ./config-client:/cltl-context/config
+      - ./tests/integration/config/custom-client.config:/cltl-context/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-context/config/logging.config
+      - ./tests/integration/storage-csplit-client:/cltl-context/storage

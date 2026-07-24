@@ -1,7 +1,7 @@
 services:
   rabbitmq:
     image: "rabbitmq:3.12-management"
-    container_name: eliza-rabbitmq
+    container_name: ${COMPOSE_PROJECT_NAME}-rabbitmq
     hostname: rabbitmq
     ports:
       - "5672:5672"    # AMQP — exposed for remote clients
@@ -23,7 +23,7 @@ services:
   eliza-backend:
     image: ghcr.io/leolani/cltl-backend:${VERSION:-latest}
     command: ["python", "src/storage_main.py"]
-    container_name: eliza-backend
+    container_name: ${COMPOSE_PROJECT_NAME}-backend
     ports:
       - "8001:8000"    # Storage API — exposed for remote clients
     volumes:
@@ -45,7 +45,7 @@ services:
 
   eliza-vad:
     image: ghcr.io/leolani/cltl-vad:${VERSION:-latest}
-    container_name: eliza-vad
+    container_name: ${COMPOSE_PROJECT_NAME}-vad
     volumes:
       - ./config-server:/cltl-vad/config
       - ./storage:/cltl-vad/storage
@@ -59,7 +59,7 @@ services:
 
   eliza-asr:
     image: ghcr.io/leolani/cltl-asr:${VERSION:-latest}
-    container_name: eliza-asr
+    container_name: ${COMPOSE_PROJECT_NAME}-asr
     volumes:
       - ./config-server:/cltl-asr/config
       - ./storage:/cltl-asr/storage
@@ -73,7 +73,7 @@ services:
 
   eliza-emissor:
     image: ghcr.io/leolani/cltl-emissor-data:${VERSION:-latest}
-    container_name: eliza-emissor
+    container_name: ${COMPOSE_PROJECT_NAME}-emissor
     ports:
       - "8002:8000"
     volumes:
@@ -89,7 +89,7 @@ services:
 
   eliza-eliza:
     image: ghcr.io/leolani/cltl-eliza:${VERSION:-latest}
-    container_name: eliza-eliza
+    container_name: ${COMPOSE_PROJECT_NAME}-eliza
     volumes:
       - ./config-server:/cltl-eliza/config
       - ./storage:/cltl-eliza/storage

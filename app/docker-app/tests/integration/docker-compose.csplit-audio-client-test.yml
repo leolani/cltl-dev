@@ -10,7 +10,8 @@
 # the mic thread pointed at the stub audio server on the host (port 9876).
 #
 # extra_hosts is provided by docker-compose.client.yml for all services.
-# eliza-app needs no change — it has no mic thread.
+# eliza-context needs the same override applied since audio-client.config also
+# carries the [cltl.context]/[cltl.keyword] sections it reads — it has no mic thread.
 
 services:
   eliza-backend:
@@ -19,3 +20,10 @@ services:
       - ./tests/integration/config/audio-client.config:/cltl-backend/config/custom.config
       - ./tests/integration/config/logging.config:/cltl-backend/config/logging.config
       - ./tests/integration/storage-csplit-client:/cltl-backend/storage
+
+  eliza-context:
+    volumes:
+      - ./config-client:/cltl-context/config
+      - ./tests/integration/config/audio-client.config:/cltl-context/config/custom.config
+      - ./tests/integration/config/logging.config:/cltl-context/config/logging.config
+      - ./tests/integration/storage-csplit-client:/cltl-context/storage

@@ -1,3 +1,4 @@
+
 # syntax = docker/dockerfile:1.4
 # Builds the app-level orchestration service.
 # Build context: app/ directory (requires ghcr.io/leolani/cltl-base:latest to exist first)
