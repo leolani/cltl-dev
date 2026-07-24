@@ -11,6 +11,7 @@ project_components = $(addprefix ${project_root}/, \
 		cltl-eliza \
 		cltl-chat-ui \
 		cltl-emissor-data \
+		cltl-monitoring \
 		cltl-vad \
 		cltl-asr \
 		app)
