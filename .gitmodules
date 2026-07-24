@@ -42,3 +42,7 @@
 	path = cltl-context
 	url = https://github.com/leolani/cltl-context.git
 	branch = main
+[submodule "cltl-monitoring"]
+	path = cltl-monitoring
+	url = https://github.com/leolani/cltl-monitoring.git
+	branch = main
