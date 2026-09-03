@@ -4,231 +4,202 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is the Eliza App repository - a conversational AI application built using the CLTL (Computational Lexicology & Terminology Lab) framework. The project is structured as a meta-repository containing multiple submodules that implement different components of the conversational system.
+The Eliza App is an event-driven conversational AI built on the CLTL (Computational Lexicology & Terminology Lab) framework. It is structured as a meta-repository of git submodules, each implementing one component of the system.
 
 ## Architecture
 
-The Eliza App follows a modular, event-driven architecture with the following key components:
-
 ### Core Components
-- **Backend Server** (`cltl-backend`): Provides REST API for raw audio/video signals and manages device access
-- **Voice Activity Detection** (`cltl-vad`): Detects speech activity in audio streams using WebRTC VAD
-- **Automatic Speech Recognition** (`cltl-asr`): Transcribes audio to text (supports Whisper, Google ASR, Wav2Vec, SpeechBrain)
-- **Eliza Module** (`cltl-eliza`): Core conversational AI logic implementing ELIZA-style responses
-- **Chat UI** (`cltl-chat-ui`): Web-based chat interface for text interaction
-- **Context Service** (`app-service/context`): Manages conversation context and state
-- **EMISSOR Data Storage** (`cltl-emissor-data`): Handles structured data storage using the EMISSOR framework
+
+| Submodule | Role |
+|---|---|
+| `emissor` | Core data representation framework — multimodal signals, episodic knowledge graph |
+| `cltl-combot` | Shared infrastructure: EventBus, ConfigurationManager, ResourceManager, DIContainer, TopicWorker |
+| `cltl-backend` | REST API for raw audio/video device access and signal storage |
+| `cltl-vad` | Voice activity detection (WebRTC VAD) — splits audio stream into speech segments |
+| `cltl-asr` | Pluggable speech-to-text (Whisper, Google, Wav2Vec, SpeechBrain) |
+| `cltl-eliza` | ELIZA-style conversational logic |
+| `cltl-chat-ui` | Web-based text chat interface |
+| `cltl-emissor-data` | Event-driven EMISSOR data persistence service |
+| `cltl-context` | Conversation context and scenario management (lives in `app/src/eliza_app_service/context/`) |
+| `app` | Application entry point — wires all containers, Flask dispatcher, `py-app/app.py` |
+
+> **Known bug**: `app/src/eliza_app_service/context/service.py:24` calls `config_manager.get_config("eliza.context")` but the section in `default.config` is `[app.context]`. This raises `NoSectionError` at runtime; pending fix.
 
 ### Event System
-Components communicate through an event bus using the EMISSOR framework for structured data exchange. Events include audio signals, text signals, voice activity, and conversation state changes.
+
+Components communicate through an `EventBus`. Events carry a typed `payload` and `EventMetadata` (timestamp, topic, `scenario_id`, tenant). Two implementations exist — see [Event Bus](#event-bus) below.
+
+### Service Pattern
+
+Every CLTL component follows a four-file structure under `cltl_service/<component>/`:
+
+```
+cltl/<component>/
+  api.py             # ABC defining the component interface (pure logic, no EventBus dependency)
+
+cltl_service/<component>/
+  schema.py          # Dataclasses for event payloads (extend EMISSOR base events)
+  service.py         # TopicWorker-based service; has from_config(), start(), stop(), _process(event), app
+  container.py       # DIContainer subclass; @property @singleton accessors; calls super().start()/stop()
+```
+
+**`from_config` classmethod** — every service has one; it reads configuration and returns a fully wired instance. Callers never call `__init__` directly.
+
+**`app` property** — returns a Flask WSGI app (for services with HTTP endpoints) or `None`. The root `app.py` mounts non-`None` apps via `DispatcherMiddleware`.
+
+**Lifecycle**:
+1. `container.start()` calls `super().start()` first, then `service.start()`
+2. `service.start()` creates a `TopicWorker` and calls `topic_worker.start().wait()`
+3. Shutdown is the reverse: `service.stop()` → `topic_worker.stop()` + `topic_worker.await_stop()`, then `super().stop()`
+
+## Package Structure
+
+```
+src/
+  cltl/<component>/          # ABCs, pure-logic implementations — no EventBus/TopicWorker dependency
+  cltl_service/<component>/  # Service wrappers, containers, schemas
+```
+
+- `setup.py` uses `find_namespace_packages(include=['cltl.*', 'cltl_service.*'], where='src')`
+- `__init__.py` files **must be empty** — namespace packages break if they contain imports
+- Config section names mirror the Python package path: `[cltl.asr]`, `[cltl.asr.whisper]`, `[cltl.backend]`; the app-layer exception is `[app.context]`
+
+## Event Bus
+
+Two implementations in `cltl.combot.infra.event`:
+
+| `implementation` config value | Class | Module | When |
+|---|---|---|---|
+| `internal` | `SynchronousEventBus` | `memory.py` | Local dev, single process, tests |
+| `kombu` | `KombuEventBus` | `kombu.py` | Docker Compose / multi-process (RabbitMQ) |
+
+Toggle via `[cltl.event] implementation: internal|kombu` in `default.config`.
+
+**Publishing**: `event_bus.publish(topic, Event.for_payload(payload))`. Pass `source=source_event` to propagate `scenario_id` and `tenant` from an upstream event.
+
+**Topics** are plain strings (e.g., `cltl.topic.vad`, `cltl.topic.text_in`). Always read topic names from config — never hardcode them.
+
+## DI Container Conventions
+
+- All containers extend `InfraContainer` (which mixes in `KombuEventBusContainer`, `K8LocalConfigurationContainer`, `ThreadedResourceContainer`)
+- Singleton services use `@property @singleton` — at most one instance per container class
+- **`@singleton` cannot return `None`** — use `False` as the sentinel for "intentionally absent" optional services; callers guard with `if self.asr_service:`
+- Call `ApplicationContainer.load_configuration()` before instantiating the container; it loads `default.config` plus optional `custom.config` and `credentials.config`
+- `ApplicationContainer` in `app.py` uses multiple-inheritance MRO to compose all component containers; `start()`/`stop()` chain via `super()`
 
 ## Development Commands
 
 ### Initial Setup
 ```bash
-# Clone with all submodules
 git clone --recurse-submodules -j8 https://github.com/leolani/eliza-app.git
 cd eliza-app
 ```
 
 ### Build and Run
 ```bash
-# Build the entire project (run twice as recommended in README)
+# Build the entire project (run twice — first pass builds deps, second links them)
 make build
 make build
 
-# Run the Python application locally
-cd app
-source venv/bin/activate
-cd py-app
-python app.py
+# Run locally
+cd app && source venv/bin/activate
+cd py-app && python app.py
 ```
+
+The active root makefile is the lowercase `makefile`. A byte-identical `Makefile`
+also exists, but GNU make searches `GNUmakefile` → `makefile` → `Makefile` and
+stops at the first hit, so edits to `Makefile` have no effect.
+
+The build requires Python 3.10 (see `.python-version`) and the PortAudio and
+libsndfile system headers — `pyaudio` has no aarch64 wheel and compiles from
+source:
+
+```bash
+sudo apt-get install -y portaudio19-dev libsndfile1 libasound2-dev
+```
+
+Component installs use `pip --no-index --find-links=cltl-requirements/mirror
+--find-links=cltl-requirements/leolani`, so an empty `cltl-requirements/mirror/`
+makes every venv unbuildable.
+
+**A green `make build` is not evidence the build worked.** The `venv:` recipe in
+`util/make/makefile.py.base.mk` chains its steps with `;` rather than `&&`, so a
+failed `pip install` leaves the recipe exiting 0, and the following `touch venv`
+marks the target up to date. A venv containing only `pip`/`setuptools`/`wheel`
+is a failed install. Use the `build` skill to check.
 
 ### Component Management
 ```bash
-# Update build system across submodules
-make update-build
-
-# Build specific targets
-make clean    # Clean all components
-make install  # Install all components
-make run      # Run the app component
-make stop     # Stop the app component
+make clean          # Clean all components. Also runs cltl-requirements' own clean,
+                    # which deletes mirror/, leolani/ and requirements.lock.
+                    # Prefer `make -C <component> clean`.
+make install        # NOT a Python install — cltl-requirements has `install: docker`,
+                    # so this builds the ghcr.io/leolani/cltl-base images.
+make update-build   # Update build system (nested util submodule) across submodules
 ```
 
-## Project Structure
+`make run` and `make stop` are defined in `util/make/makefile.parent.mk` but are
+**dead targets**: they expand to `$(MAKE) --directory=$(project_name) run` with
+the root `project_name ?= "eliza-app"` (literal quotes, no such directory), and
+no component defines a `run` or `stop` target. Run the app with:
 
-- **Root Level**: Meta-repository with Makefile orchestrating submodule builds
-- **app/**: Main application code with Python entry point (`py-app/app.py`)
-- **Submodules**: Individual CLTL components (cltl-asr, cltl-backend, etc.)
-- **util/**: Build system utilities and makefiles
-- **emissor/**: Core EMISSOR framework for structured data handling
+```bash
+cd app && source venv/bin/activate
+cd py-app && python app.py
+```
 
 ## Configuration
 
-### Main Config
-- **Location**: `app/py-app/config/default.config`
-- **Format**: INI-style configuration sections for each component
-- **Key Settings**:
-  - Audio: 16kHz sampling, single channel
-  - ASR: Whisper implementation by default
-  - Backend: Local server on port 8000
-  - VAD: WebRTC with configurable thresholds
+### Files
+- `app/py-app/config/default.config` — committed baseline (INI-style)
+- `app/py-app/config/custom.config` — local overrides, committed but intentionally sparse
+- `app/py-app/config/credentials.config` — secrets (gitignored); e.g. `GOOGLE_APPLICATION_CREDENTIALS`
 
-### Runtime Deployment Options
-1. **Local Python Application**: All components in single process (recommended for development)
-2. **Docker Compose**: Containerized components with message bus
-3. **Kubernetes**: Full orchestration for production deployment
+### Syntax
+- `$VAR` and `${VAR}` interpolation is supported in values
+- `[environment]` section sets process environment variables at startup
+- To disable an optional component, set `implementation:` (empty value) in its config section
 
-## Application Runtime
+### Key Settings
+- Audio: 16 kHz, 1 channel, 480-sample frames (`[cltl.audio]`)
+- ASR: Whisper by default; set `implementation:` to disable (`[cltl.asr]`)
+- Backend: local server on port 8000 (`[cltl.backend]`)
+- Event bus: `internal` by default; `kombu` for Docker (`[cltl.event]`)
 
-After starting with `python app.py`:
-- Backend server runs on `http://localhost:8000`
-- Chat UI available at `http://localhost:8000/chatui/static/chat.html`
-- EMISSOR data API at `http://localhost:8000/emissor`
-- Storage service at `http://localhost:8000/storage`
+## Runtime Endpoints
 
-The application supports both voice input (with ASR) and text input through the web UI.
+After `python app.py`:
 
-## Development Workflow
+| Path | Service |
+|---|---|
+| `http://localhost:8000/host` | Backend (audio/video device API) |
+| `http://localhost:8000/chatui/static/chat.html` | Chat UI |
+| `http://localhost:8000/emissor` | EMISSOR data API |
+| `http://localhost:8000/storage` | Storage service |
 
-Follow the development practices outlined in the [cltl-combot](https://github.com/leolani/cltl-combot) project for:
-- Component development patterns
-- Event handling conventions
-- Configuration management
-- Testing approaches
+## Deployment Options
 
-## Key Implementation Details
+1. **Local Python** — all components in one process (recommended for dev)
+2. **Docker Compose** — containerised with RabbitMQ (`kombu` event bus); `docker-compose.yml` at root
+3. **Kubernetes** — full orchestration for production
 
-- **Dependency Injection**: Uses container pattern for service management
-- **Resource Management**: Threaded resource containers for concurrent operations
-- **Event Bus**: Synchronous event bus for component communication
-- **Storage**: Cached audio/image storage with configurable backends
-- **Modular ASR**: Pluggable ASR implementations via configuration
+## Development Conventions
 
+### Imports
+- No wildcard imports (`from module import *`)
+- Keep `__init__.py` files empty — namespace packages require it
+- Never manipulate `sys.path` (no `sys.path.append`); use `importlib` for dynamic imports
 
-## Coding conventions
+### Adding a new component
+1. Create `cltl/<component>/api.py` with the ABC (no EventBus/TopicWorker imports)
+2. Create `cltl_service/<component>/schema.py` with event dataclasses
+3. Create `cltl_service/<component>/service.py` with `from_config` and `TopicWorker`-based `_process`
+4. Create `cltl_service/<component>/container.py` extending `InfraContainer` with `@property @singleton`
+5. Add `[cltl.<component>]` section to `default.config`
+6. Wire the container into `ApplicationContainer` via MRO in `app/py-app/app.py`
 
-Write code on a level of a senior software engineer and data science/machine learning expert with senior Python knowledge.
-Follow clean code standards in the spirit of *Clean Code* by Robert C. Martin.  
+### Lazy ML imports
+Heavy dependencies (torch, transformers, speechbrain) must be imported inside the relevant `if implementation ==` branch in the container's factory method — never at module top-level. This keeps unconfigured backends out of the import graph. See `cltl-asr/src/cltl_service/asr/container.py` for the reference pattern.
 
-### Naming and Readability
-- Use **clear, descriptive names** for variables, functions, classes, and modules.
-- Avoid abbreviations unless they are universally recognized.
-- Code should **read like prose** — assume the reader is smart but not omniscient.
-
-### Function Design
-- Functions should be:
-  - **Small** (ideally 5–15 lines)
-  - **Do one thing only** (Single Responsibility Principle), i.e. all code used in a function should be on the samelevel of abstraction
-  - Named clearly based on what they do
-- Prefer **top-down readability**: high-level functions should summarize the intent clearly.
-- Avoid excessive branching — use early returns to reduce nesting.
-
-### Code Structure
-- Keep classes and modules **cohesive** and **focused**.
-- Apply **Separation of Concerns**.
-- Favor **composition over inheritance** when applicable.
-
-### Duplication and Reuse
-- Avoid code duplication — **DRY** (*Don’t Repeat Yourself*).
-- Extract reusable logic into helper functions, constants, or abstractions.
-
-### Testing
-- Encourage **unit tests** for critical logic.
-- Promote **Test-Driven Development (TDD)** where applicable.
-- Follow the AAA pattern (Arrange, Act, Assert).
-- Use fixtures and mocks to isolate tests.
-- Tests should be:
-  - **Fast**
-  - **Independent**
-  - **Clear and meaningful**
-
-### Comments and Documentation
-- Only write comments when the code **cannot be made self-explanatory**. I.e. comments should explain why the code is
-  doing something, not what it is doing, and should be only added if it is necessary to explain this, which should be
-  the exception.
-- Use **docstrings** for public functions and classes.
-- Prefer code that explains itself — use comments to explain **why**, not **what**.
-
-### Error Handling
-- Handle errors **gracefully** and explicitly.
-- Use **early returns** to reduce nesting and improve clarity.
-- Use **exceptions** for exceptional cases — not for normal control flow.
-
-### General Style
-- Favor **immutability** and **pure functions** where practical.
-- Minimize side effects.
-- Ensure code is **consistent** with the surrounding style and conventions.
-
-### Output Expectations (for AI code generation)
-When generating or reviewing code, always include:
-
-- **Clean, idiomatic code** in the target language  
-- **Brief explanation or reasoning** (if helpful)  
-- **Example usage or test case** (when appropriate)  
-- **Improvement suggestions** (if reviewing existing code)  
-
-### Python specific
-
-#### Naming and Readability
-- Use `snake_case` for functions and variables, `PascalCase` for classes, and `UPPER_CASE` for constants.
-- Avoid single-letter names except for throwaway variables (e.g. `for _ in range(n)`).
-
-#### Function Design
-- Use default arguments and keyword arguments for clarity and flexibility.
-- Prefer keyword-only arguments in functions with many parameters (using `*`).
-- Use type hints for paremeters where they are helpful
-
-#### Code Structure
-- Use modules and packages to separate concerns and keep code modular.
-- Follow PEP 8 for code layout (e.g., spacing, line length, imports order).
-- Structure scripts with:
-  ```python
-  if __name__ == "__main__":
-      main()
-  ```
-  
-#### Imports
-- Don't use wildcard imports
-- Prefer empty `__init__.py` files
-- Never manipulate the Python Path from code, e.g. with `sys.path.append` or similar, use importlib instead
-
-#### Duplication and Reuse
-- Use context managers (`with` statement) for managing resources like files or DB connections.
-- Prefer built-in functions and standard libraries over custom reimplementations.
-
-#### Testing
-- Write unit tests using `pytest`.
-
-#### Comments and Documentation
-- Use docstrings (`""" """`) for all public modules, classes, and functions.
-- Follow PEP 257 for docstring conventions.
-
-#### Error Handling
-- Use try/except blocks sparingly and specifically:
-- Avoid catching general `Exception` unless absolutely necessary.
-- Use custom exception classes for clarity in larger applications.
-
-#### Pythonic Practices
-- Prefer list/dict comprehensions over loops when readable:
-  ```python
-  squares = [x**2 for x in range(10)]
-  ```
-- Use `enumerate()` and `zip()` instead of manual index tracking.
-- Leverage unpacking:
-  ```python
-  a, b = b, a  # swap
-  ```
-- Prefer `is` for `None`, not `==`.
-- Write truthy/falsey expressions idiomatically:
-  ```python
-  if not items:  # instead of len(items) == 0
-  ```
-
-### Final Note
-You are my **code quality compass**. Help me write code I’ll be proud of in six months.
-
-
-
-
+### Tests
+Write unit tests with `pytest`. For service tests use `SynchronousEventBus` and `threading.Event` for synchronization. See `cltl-asr/tests/test_asr_service.py` for the reference pattern.

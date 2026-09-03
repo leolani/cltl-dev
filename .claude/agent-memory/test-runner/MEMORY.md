@@ -1,0 +1,2 @@
+- [Soundfile DYLD_LIBRARY_PATH fix](feedback_soundfile_dyld.md) — cltl-backend tests need DYLD_LIBRARY_PATH=/opt/homebrew/lib on macOS to load libsndfile
+- [Venv and pytest setup](feedback_venv_pytest.md) — use app/venv for all cltl-* tests; pytest must be pip-installed there; local submodule venvs lack cltl packages
