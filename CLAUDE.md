@@ -22,6 +22,7 @@ The Eliza App is an event-driven conversational AI built on the CLTL (Computatio
 | `cltl-emissor-data` | Event-driven EMISSOR data persistence service |
 | `cltl-context` | Conversation context and scenario management (lives in `app/src/eliza_app_service/context/`) |
 | `app` | Application entry point — wires all containers, Flask dispatcher, `py-app/app.py` |
+| `integration` | Integration tests for the modules — composes topologies and asserts the boundaries hold. Not a submodule; see `integration/README.md` and `docs/integration-testing-design.md` |
 
 > **Known bug**: `app/src/eliza_app_service/context/service.py:24` calls `config_manager.get_config("eliza.context")` but the section in `default.config` is `[app.context]`. This raises `NoSectionError` at runtime; pending fix.
 
@@ -127,6 +128,53 @@ makes every venv unbuildable.
 failed `pip install` leaves the recipe exiting 0, and the following `touch venv`
 marks the target up to date. A venv containing only `pip`/`setuptools`/`wheel`
 is a failed install. Use the `build` skill to check.
+
+### Integration tests
+
+```bash
+make -C integration build   # offline venv, every module from cltl-requirements/leolani
+make -C integration test    # tier 1: modules composed in-process, no Docker
+```
+
+`integration/` installs the **published sdists** rather than the source trees, so
+it is also the only thing in the repo that catches a `setup.py` that fails to
+package a file.
+
+Tier 2 runs the real container images and needs Docker — provided by the
+`docker-in-docker` devcontainer feature — plus the component images built from
+the current source:
+
+```bash
+make -C integration docker-images   # says what is missing and how to build it
+make -C integration test-compose    # ~18 min
+```
+
+The spoken-conversation tests additionally need `espeak-ng` (`sudo apt-get
+install -y espeak-ng`); without it they skip.
+
+### Demos and manual tests
+
+The same topologies, run without assertions:
+
+```bash
+make -C integration demos                 # what there is to run
+make -C integration demo-text-pipeline    # in this process; Ctrl-C to stop
+make -C integration demo-csplit DEMO_FLAGS='--tier compose'
+make -C integration test-manual           # a person drives the chat UI
+```
+
+`python -m cltl_integration <scenario>` is the launcher behind `demo-<name>`;
+it opens a scenario itself (the `init` intention when cltl-context is present,
+`ScenarioStarted` otherwise) because the chat UI renders nothing without one.
+`manual`-marked tests are excluded from `test`, `test-compose` and `test-all`,
+and skip rather than hang when there is no terminal.
+
+Tier 2 also runs the **client/server split** (`tests/compose/test_csplit.py`):
+two compose projects on two networks, cltl-context and cltl-chat-ui on the
+client and cltl-eliza and storage on the server, with the client's audio stored
+remotely over HTTP. It is the only thing that exercises
+`cltl-backend/src/storage_main.py` (`StorageContainer` rather than
+`BackendContainer`). See `integration/src/cltl_integration/runner/split.py`.
 
 ### Component Management
 ```bash
