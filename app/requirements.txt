@@ -9,6 +9,10 @@ cltl.chat-ui
 cltl.eliza
 
 # TODO Fix backend optional dependencies
+# gTTS: cltl_service.backend.backend_container imports cltl.backend.source.local_tts
+# at module level, which imports gtts unconditionally. gTTS lives in the
+# cltl.backend 'local'/'remote' extras, not 'impl', so it must be listed here.
+gTTS
 soundfile
 cachetools
 pyaudio
