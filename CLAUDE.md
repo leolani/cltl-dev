@@ -24,7 +24,18 @@ The Eliza App is an event-driven conversational AI built on the CLTL (Computatio
 | `app` | Application entry point — wires all containers, Flask dispatcher, `py-app/app.py` |
 | `integration` | Integration tests for the modules — composes topologies and asserts the boundaries hold. Not a submodule; see `integration/README.md` and `docs/integration-testing-design.md` |
 
-> **Known bug**: `app/src/eliza_app_service/context/service.py:24` calls `config_manager.get_config("eliza.context")` but the section in `default.config` is `[app.context]`. This raises `NoSectionError` at runtime; pending fix.
+> **Known bug**: `app/src/eliza_app_service/context/service.py:62` calls
+> `self._topic_worker.stop()` unconditionally, so shutting the app down before
+> `ContextService.start()` has run — or after a failed start — raises
+> `AttributeError: 'NoneType' object has no attribute 'stop'` and aborts the
+> container shutdown chain before cltl-emissor-data can flush. The app config
+> now sets `[cltl.emissor-data] flush_interval: 0` so a conversation is written
+> as it happens rather than only at a clean stop, but the shutdown path itself
+> is still broken; pending fix.
+>
+> The related `eliza.context` / `[app.context]` section mismatch **is fixed**:
+> `app/py-app/config/default.config` now names the section `[eliza.context]`,
+> matching what `ContextService.from_config` reads.
 
 ### Event System
 
@@ -63,7 +74,7 @@ src/
 
 - `setup.py` uses `find_namespace_packages(include=['cltl.*', 'cltl_service.*'], where='src')`
 - `__init__.py` files **must be empty** — namespace packages break if they contain imports
-- Config section names mirror the Python package path: `[cltl.asr]`, `[cltl.asr.whisper]`, `[cltl.backend]`; the app-layer exception is `[app.context]`
+- Config section names mirror the Python package path: `[cltl.asr]`, `[cltl.asr.whisper]`, `[cltl.backend]`; the app-layer exception is `[eliza.context]`, which is read by `eliza_app_service.context`
 
 ## Event Bus
 
@@ -213,6 +224,18 @@ cd py-app && python app.py
 - ASR: Whisper by default; set `implementation:` to disable (`[cltl.asr]`)
 - Backend: local server on port 8000 (`[cltl.backend]`)
 - Event bus: `internal` by default; `kombu` for Docker (`[cltl.event]`)
+- Chat UI image annotation: `[cltl.chat-ui] image_upload: True` adds a panel
+  beside the chat where a person uploads an image, drags labelled rectangles
+  over it and submits. Submitting publishes **one** `ImageSignalEvent` on
+  `topic_image` with a `Mention` per region embedded, and echoes the image into
+  the transcript — it publishes nothing on `topic_utterance`, so the agent does
+  not answer a picture. `image_storage_url` defaults to `[cltl.backend]
+  storage_url`; keep the two in step or the persisted signal references pixels
+  nothing can fetch. See `docs/plans/chat-ui-image-annotation.md` and
+  `docs/chat-ui-frontend-alternatives.md`.
+- EMISSOR persistence: `[cltl.emissor-data] flush_interval: 0` writes signals as
+  they arrive. The library default of -1 keeps them in memory until a clean
+  scenario stop, so an interrupted run loses the conversation.
 
 ## Runtime Endpoints
 
