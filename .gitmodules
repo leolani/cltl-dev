@@ -1,7 +1,7 @@
 [submodule "emissor"]
 	path = emissor
 	url = https://github.com/leolani/emissor.git
-	branch = main
+	branch = ref_scenarios
 [submodule "util"]
 	path = util
 	url = https://github.com/leolani/cltl-build.git
@@ -9,15 +9,15 @@
 [submodule "cltl-combot"]
 	path = cltl-combot
 	url = https://github.com/leolani/cltl-combot.git
-	branch = main
+	branch = ref_scenarios
 [submodule "cltl-emissor-data"]
 	path = cltl-emissor-data
 	url = https://github.com/leolani/cltl-emissor-data.git
-	branch = main
+	branch = ref_scenarios
 [submodule "cltl-chat-ui"]
 	path = cltl-chat-ui
 	url = https://github.com/leolani/cltl-chat-ui.git
-	branch = main
+	branch = ref_scenarios
 [submodule "app/util"]
 	path = app/util
 	url = https://github.com/leolani/cltl-build.git
@@ -25,23 +25,23 @@
 [submodule "cltl-eliza"]
 	path = cltl-eliza
 	url = https://github.com/leolani/cltl-eliza.git
-	branch = main
+	branch = ref_scenarios
 [submodule "cltl-backend"]
 	path = cltl-backend
 	url = https://github.com/leolani/cltl-backend.git
-	branch = main
+	branch = ref_scenarios
 [submodule "cltl-asr"]
 	path = cltl-asr
 	url = https://github.com/leolani/cltl-asr.git
-	branch = main
+	branch = ref_scenarios
 [submodule "cltl-vad"]
 	path = cltl-vad
 	url = https://github.com/leolani/cltl-vad.git
-	branch = main
+	branch = ref_scenarios
 [submodule "cltl-context"]
 	path = cltl-context
 	url = https://github.com/leolani/cltl-context.git
-	branch = main
+	branch = ref_scenarios
 [submodule "cltl-monitoring"]
 	path = cltl-monitoring
 	url = https://github.com/leolani/cltl-monitoring.git
