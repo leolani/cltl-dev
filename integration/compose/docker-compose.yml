@@ -1,0 +1,170 @@
+# Tier 2: the platform as the images it actually ships.
+#
+# One file, all services. A topology selects a subset by naming its services on
+# the `docker compose up` command line; nothing here is per-topology, so there
+# is no fragment-merging machinery and no generated YAML to keep in step with
+# the module registry. `cltl_integration.runner.compose` drives it, and
+# tests/compose/test_compose_file.py asserts that this file still says what the
+# module registry and the runners assume it says.
+#
+# One file covers the client/server split too: the two halves are two compose
+# projects over this same file, differing only in which services they name and
+# in the CLTL_CONTAINER_* variables below. See `cltl_integration.runner.split`.
+#
+# Three deliberate differences from app/docker-app/docker-compose.yml:
+#
+#  * No `container_name` and no bind-mounted RabbitMQ mnesia directory. Both are
+#    global names, so two runs collide however unique the project name is. That
+#    is what forced the prior art into serialized sessions with five `up`
+#    retries, and into deleting stale mnesia data before each run.
+#  * No fixed host ports. Every published port is ephemeral and discovered with
+#    `docker compose port`, so a run cannot lose to whatever else holds 5672.
+#  * `depends_on` names only RabbitMQ. Adding the real edges — chat-ui needs
+#    eliza, asr needs the backend's storage — would drag whole pipelines into a
+#    two-service slice, because compose starts a service's dependencies whether
+#    the caller asked for them or not.
+
+x-cltl-env: &cltl-env
+  # Container-side view of the network. ComposeRunner sets the same variables to
+  # 127.0.0.1:<published port> in its own environment; see tier-compose.config.
+  #
+  # The defaults are the single-stack case, where both are names on this
+  # project's own network. A client/server split overrides them from the outside
+  # (see runner/split.py): the client project runs no broker and no storage of
+  # its own, and reaches the server's through host.docker.internal and the ports
+  # the server project published. The compose-time names are deliberately not
+  # CLTL_AMQP_URL/CLTL_STORAGE_URL — the runner already holds those in its own
+  # environment, pointing at 127.0.0.1, and they would leak in here.
+  CLTL_AMQP_URL: ${CLTL_CONTAINER_AMQP_URL:-amqp://eliza:eliza123@rabbitmq:5672/}
+  CLTL_STORAGE_URL: ${CLTL_CONTAINER_STORAGE_URL:-http://backend:8000/storage/}
+  # The stub microphone runs outside the compose network, in the process running
+  # the tests. Empty unless a topology needs it.
+  CLTL_AUDIO_URL: ${CLTL_AUDIO_URL:-}
+
+x-cltl-service: &cltl-service
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+  extra_hosts:
+    # How CLTL_AUDIO_URL reaches the stub microphone.
+    - "host.docker.internal:host-gateway"
+  restart: "no"
+  networks:
+    - cltl
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    environment:
+      RABBITMQ_DEFAULT_USER: eliza
+      RABBITMQ_DEFAULT_PASS: eliza123
+      RABBITMQ_DEFAULT_VHOST: /
+    ports:
+      - "5672"     # AMQP, for the test process's event probe
+      - "15672"    # management API, used to confirm the probe's queues are bound
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+    networks:
+      - cltl
+
+  backend:
+    <<: *cltl-service
+    image: ghcr.io/leolani/cltl-backend:${CLTL_IMAGE_TAG:-latest}
+    # src/main.py is BackendContainer: microphone, TTS and storage in one
+    # process. src/storage_main.py is StorageContainer alone, which is what a
+    # server in a client/server split actually runs — a different DI container
+    # and a different entry point, so it is worth running rather than
+    # approximating with main.py and every device topic left empty.
+    command: ["python", "${CLTL_BACKEND_MAIN:-src/main.py}"]
+    ports:
+      - "8000"
+    volumes:
+      - ${CLTL_CONFIG_DIR:?set by ComposeRunner}:/cltl-backend/config:ro
+      - ${CLTL_STORAGE_DIR:?set by ComposeRunner}:/cltl-backend/storage
+    environment:
+      <<: *cltl-env
+      CLTL_LOGGING_CONFIG: /cltl-backend/config/logging.config
+
+  emissor:
+    <<: *cltl-service
+    image: ghcr.io/leolani/cltl-emissor-data:${CLTL_IMAGE_TAG:-latest}
+    ports:
+      - "8000"
+    volumes:
+      - ${CLTL_CONFIG_DIR:?set by ComposeRunner}:/cltl-emissor-data/config:ro
+      - ${CLTL_STORAGE_DIR:?set by ComposeRunner}:/cltl-emissor-data/storage
+    environment:
+      <<: *cltl-env
+      CLTL_LOGGING_CONFIG: /cltl-emissor-data/config/logging.config
+
+  chatui:
+    <<: *cltl-service
+    image: ghcr.io/leolani/cltl-chat-ui:${CLTL_IMAGE_TAG:-latest}
+    ports:
+      - "8000"
+    volumes:
+      - ${CLTL_CONFIG_DIR:?set by ComposeRunner}:/cltl-chatui/config:ro
+      - ${CLTL_STORAGE_DIR:?set by ComposeRunner}:/cltl-chatui/storage
+    environment:
+      <<: *cltl-env
+      CLTL_LOGGING_CONFIG: /cltl-chatui/config/logging.config
+
+  eliza:
+    <<: *cltl-service
+    image: ghcr.io/leolani/cltl-eliza:${CLTL_IMAGE_TAG:-latest}
+    ports:
+      - "8000"
+    volumes:
+      - ${CLTL_CONFIG_DIR:?set by ComposeRunner}:/cltl-eliza/config:ro
+      - ${CLTL_STORAGE_DIR:?set by ComposeRunner}:/cltl-eliza/storage
+    environment:
+      <<: *cltl-env
+      CLTL_LOGGING_CONFIG: /cltl-eliza/config/logging.config
+
+  context:
+    <<: *cltl-service
+    image: ghcr.io/leolani/cltl-context:${CLTL_IMAGE_TAG:-latest}
+    ports:
+      - "8000"
+    volumes:
+      - ${CLTL_CONFIG_DIR:?set by ComposeRunner}:/cltl-context/config:ro
+      - ${CLTL_STORAGE_DIR:?set by ComposeRunner}:/cltl-context/storage
+    environment:
+      <<: *cltl-env
+      CLTL_LOGGING_CONFIG: /cltl-context/config/logging.config
+
+  vad:
+    <<: *cltl-service
+    image: ghcr.io/leolani/cltl-vad:${CLTL_IMAGE_TAG:-latest}
+    ports:
+      - "8000"
+    volumes:
+      - ${CLTL_CONFIG_DIR:?set by ComposeRunner}:/cltl-vad/config:ro
+      - ${CLTL_STORAGE_DIR:?set by ComposeRunner}:/cltl-vad/storage
+    environment:
+      <<: *cltl-env
+      CLTL_LOGGING_CONFIG: /cltl-vad/config/logging.config
+
+  asr:
+    <<: *cltl-service
+    image: ghcr.io/leolani/cltl-asr:${CLTL_IMAGE_TAG:-latest}
+    ports:
+      - "8000"
+    volumes:
+      - ${CLTL_CONFIG_DIR:?set by ComposeRunner}:/cltl-asr/config:ro
+      - ${CLTL_STORAGE_DIR:?set by ComposeRunner}:/cltl-asr/storage
+      # Whisper downloads ~140 MB on first use. A bind mount rather than a named
+      # volume on purpose: teardown runs `down -v`, which would take a named
+      # volume with it and re-download the model on every run.
+      - ${CLTL_MODEL_CACHE:?set by ComposeRunner}:/root/.cache/whisper
+    environment:
+      <<: *cltl-env
+      CLTL_LOGGING_CONFIG: /cltl-asr/config/logging.config
+
+networks:
+  cltl:
+    driver: bridge

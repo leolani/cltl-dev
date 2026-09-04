@@ -2,6 +2,7 @@ leolani/*dev*
 
 mirror/
 requirements.lock
+requirements.test.lock
 docker.lock
 docker.mirror.lock
 

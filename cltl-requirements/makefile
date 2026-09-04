@@ -12,6 +12,7 @@ include $(makefile_dir)util/make/makefile.git.mk
 
 mirror := mirror
 mirror_lock := requirements.lock
+test_mirror_lock := requirements.test.lock
 artifacts := leolani
 
 
@@ -21,7 +22,7 @@ artifacts := leolani
 .PHONY: clean
 clean:
 	$(info Clean $(project_name))
-	@rm -rf $(mirror) $(mirror_lock) $(artifacts) docker.base.lock docker.slim.lock
+	@rm -rf $(mirror) $(mirror_lock) $(test_mirror_lock) $(artifacts) docker.base.lock docker.slim.lock
 	@mkdir $(mirror) $(artifacts)
 
 $(mirror_lock): requirements.txt
@@ -31,8 +32,13 @@ $(mirror_lock): requirements.txt
 	pip download --requirement requirements.txt -d mirror \
 		| tee $(shell tty) | grep Collecting | cut -f 2 -d ' ' > $(mirror_lock)
 
+$(test_mirror_lock): requirements.test.txt
+	$(info Download test dependencies to mirror)
+	@pip download --requirement requirements.test.txt -d $(mirror) \
+		| tee /dev/stderr | grep Collecting | cut -f 2 -d ' ' > $(test_mirror_lock)
+
 .PHONY:
-build: $(mirror_lock) $(artifacts)
+build: $(mirror_lock) $(test_mirror_lock) $(artifacts)
 
 $(artifacts):
 	@mkdir -p $(artifacts)

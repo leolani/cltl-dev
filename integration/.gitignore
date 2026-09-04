@@ -1,0 +1,8 @@
+venv/
+makefile.d
+.pytest_cache/
+__pycache__/
+*.py[cod]
+storage/
+.cache/
+.demo/

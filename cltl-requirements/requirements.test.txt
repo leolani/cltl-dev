@@ -1,0 +1,17 @@
+# Test-only dependencies for the `integration/` component.
+#
+# Downloaded into the SAME mirror/ as requirements.txt, so component venvs need
+# no extra --find-links. Kept separate from requirements.txt so these packages
+# do NOT end up in the ghcr.io/leolani/cltl-base images, which are built from
+# requirements.base.txt / requirements.slim.txt.
+#
+# requests, PyYAML, gTTS and pydub are already pulled in by requirements.txt and
+# are deliberately not repeated here.
+
+pytest
+pytest-timeout
+
+# pytest runtime dependencies that requirements.txt does not already mirror.
+# (packaging, exceptiongroup and tomli are already present in mirror/.)
+pluggy
+iniconfig

@@ -14,7 +14,8 @@ project_components = $(addprefix ${project_root}/, \
 		cltl-monitoring \
 		cltl-vad \
 		cltl-asr \
-		app)
+		app \
+		integration)
 
 git_local ?= ..
 git_remote ?= https://github.com/leolani

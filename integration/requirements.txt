@@ -1,0 +1,34 @@
+# Every platform module, installed from the local registry
+# (cltl-requirements/leolani) rather than from the source trees. That is
+# deliberate: it means this component's build exercises the published sdists and
+# so catches packaging faults that no in-tree test can see.
+
+cltl.combot[external]
+cltl.backend[impl]
+cltl.context[service]
+cltl.vad[impl,service]
+cltl.asr[service]
+cltl.emissor-data[service,client]
+cltl.chat-ui
+cltl.eliza
+
+# cltl.asr is deliberately installed WITHOUT [impl] and [whisper]: those pull
+# torch, transformers, speechbrain and openai-whisper. ASR backends are imported
+# lazily inside ASRContainer._create_asr_implementation, so an unconfigured or
+# stubbed ASR never touches them. Tier 2 runs the real Whisper image instead.
+
+# Transitive dependencies the components import at module level but do not
+# declare in the extras used above — same set, and same reason, as
+# app/requirements.txt.
+gTTS
+soundfile
+cachetools
+pyaudio
+opencv-python==4.8.0.76
+
+flask
+werkzeug
+
+# Test tooling. Mirrored offline via cltl-requirements/requirements.test.txt.
+pytest
+pytest-timeout
