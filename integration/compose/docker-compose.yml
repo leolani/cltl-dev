@@ -41,6 +41,13 @@ x-cltl-env: &cltl-env
   # network, in the process running the tests. Empty unless a topology needs them.
   CLTL_AUDIO_URL: ${CLTL_AUDIO_URL:-}
   CLTL_TTS_URL: ${CLTL_TTS_URL:-}
+  # The event bus tenant. Empty on a single stack and on the shared server of a
+  # multi-tenant deployment; set to its own id by each tenant deployment. Declared
+  # here even when empty: config/topologies/multitenant_*.config read it as
+  # `[cltl.event.kombu] tenant: $CLTL_TENANT`, and EnvInterpolation leaves an
+  # undefined variable as the literal string — which KombuEventBus would take for a
+  # tenant name and bind `cltl.topic.text_in.$CLTL_TENANT`, a queue nothing routes to.
+  CLTL_TENANT: ${CLTL_TENANT:-}
 
 x-cltl-service: &cltl-service
   depends_on:

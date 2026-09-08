@@ -12,8 +12,9 @@ from cltl_integration.runner.inprocess import (HarnessInfraContainer,
                                                InProcessRunner,
                                                build_container_type)
 from cltl_integration.topology import (DEPLOYMENTS, ELIZA, ELIZA_CHATUI,
-                                       TOPOLOGIES, Deployment, Topology,
-                                       TopologyError)
+                                       MULTITENANT_SERVER, TENANT_DEPLOYMENTS,
+                                       TOPOLOGIES, Deployment, TenantDeployment,
+                                       Topology, TopologyError, merged_config)
 
 
 class TestTopologyDefinition:
@@ -82,6 +83,80 @@ class TestDeploymentDefinition:
                 assert base.exists(), f"{topology.name}: missing {base}"
                 for path in additional:
                     assert path.exists(), f"{topology.name}: missing {path}"
+
+
+class TestTenantDeploymentDefinition:
+    """One shared server and N tenants — the rules that keep them apart."""
+
+    SERVER = Topology(name="s", modules=("eliza",))
+    TENANT = Topology(name="t", modules=("context", "chatui"))
+
+    def _deployment(self, **kwargs) -> TenantDeployment:
+        return TenantDeployment(**{"name": "bogus", "server": self.SERVER,
+                                   "tenant": self.TENANT,
+                                   "tenants": ("tenant-a", "tenant-b"), **kwargs})
+
+    def test_one_tenant_is_rejected(self):
+        with pytest.raises(TopologyError, match="at least two tenants"):
+            self._deployment(tenants=("tenant-a",))
+
+    def test_duplicate_tenant_ids_are_rejected(self):
+        """Two stacks on one id bind the same keys and split the traffic."""
+        with pytest.raises(TopologyError, match="duplicate tenant ids"):
+            self._deployment(tenants=("tenant-a", "tenant-a"))
+
+    @pytest.mark.parametrize("tenant", ["tenant.a", "tenant-*", "#", "Tenant"])
+    def test_an_id_that_is_not_one_routing_key_word_is_rejected(self, tenant):
+        """`<topic>.<tenant>` is an AMQP routing key, and '.', '*' and '#' are
+        its separator and its two wildcards — an id containing one silently
+        changes which keys the pattern matches."""
+        with pytest.raises(TopologyError, match="routing-key word"):
+            self._deployment(tenants=(tenant, "tenant-b"))
+
+    def test_a_module_on_the_server_and_in_the_tenants_is_rejected(self):
+        """The server's `<topic>.#` and the tenant's `<topic>.<tenant>` both match,
+        so the tenant's events are delivered to both and processed twice."""
+        with pytest.raises(TopologyError, match="processed twice"):
+            self._deployment(tenant=Topology(name="t", modules=("chatui", "eliza")))
+
+    def test_the_same_module_on_two_tenants_is_the_point(self):
+        """The inverse of a Deployment's rule: two tenants bind different keys,
+        so neither can see the other's traffic however identical they are."""
+        deployment = self._deployment(name="ok")
+
+        assert [t.name for t in deployment.topologies()] == ["s", "t"]
+        assert deployment.tenants == ("tenant-a", "tenant-b")
+
+    def test_registered_tenant_deployments_resolve_their_config(self):
+        for deployment in TENANT_DEPLOYMENTS.values():
+            for topology in deployment.topologies():
+                base, additional = topology.config_files("compose")
+                assert base.exists(), f"{topology.name}: missing {base}"
+                for path in additional:
+                    assert path.exists(), f"{topology.name}: missing {path}"
+
+    def test_every_half_carries_the_tenant_placeholder(self):
+        """Each stack's tenant arrives from its environment, not from its files:
+        one configuration, deployed unchanged to the server and every tenant."""
+        for deployment in TENANT_DEPLOYMENTS.values():
+            for topology in deployment.topologies():
+                config = merged_config(topology, "compose")
+                assert config.get("cltl.event.kombu", "tenant") == "$CLTL_TENANT", \
+                    topology.name
+
+    def test_the_shared_server_is_ungated_and_deaf_to_intentions(self):
+        """Both halves of one decision — the reasons are in the overlay's header.
+
+        Gating a module that serves every tenant is meaningless while
+        TopicWorker keeps one process-global flag, and merely leaving
+        `intentions` empty is not enough: ElizaService still subscribes to a
+        non-empty intention topic, which on an untenanted bus is every tenant's.
+        """
+        config = merged_config(MULTITENANT_SERVER, "compose")
+
+        assert config.get("cltl.eliza", "intentions") == ""
+        assert config.get("cltl.eliza", "topic_intention") == ""
+        assert config.get("cltl.eliza", "topic_desire") == ""
 
 
 class TestRegisteredTopologies:

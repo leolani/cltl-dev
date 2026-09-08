@@ -23,11 +23,20 @@ pytestmark = pytest.mark.compose
 
 # The required variables, so that `config` can interpolate at all. Values are
 # irrelevant here: nothing is started.
+#
+# CLTL_TENANT is not required for interpolation — `${CLTL_TENANT:-}` defaults on
+# its own — but it is pinned to "" because `_config` starts from os.environ, and
+# so does ComposeStack._compose_env, which assigns "" there for exactly this
+# reason. Without it a CLTL_TENANT exported in a developer's shell would fail the
+# untenanted-by-default assertion below while a real run stayed untenanted.
 REQUIRED = {
     "CLTL_CONFIG_DIR": "/tmp/config",
     "CLTL_STORAGE_DIR": "/tmp/storage",
     "CLTL_MODEL_CACHE": "/tmp/whisper",
+    "CLTL_TENANT": "",
 }
+
+TENANT = "tenant-a"
 
 SPLIT = {
     "CLTL_CONTAINER_AMQP_URL": f"amqp://eliza:eliza123@{HOST_GATEWAY}:32768/",
@@ -116,6 +125,9 @@ class TestSingleStackDefaults:
             # log full of expected warnings is a log nobody reads.
             assert service["environment"]["CLTL_AUDIO_URL"] == "", key
             assert service["environment"]["CLTL_TTS_URL"] == "", key
+            # No tenant: KombuEventBus then binds `<topic>.#` and sees every
+            # tenant, which is what a single stack and a shared server both want.
+            assert service["environment"]["CLTL_TENANT"] == "", key
 
     def test_the_backend_runs_the_full_container_by_default(self, default_config):
         assert default_config["services"]["backend"]["command"] == ["python", "src/main.py"]
@@ -135,3 +147,19 @@ class TestSplitOverrides:
         """StorageContainer rather than BackendContainer — see runner/split.py."""
         assert split_config["services"]["backend"]["command"] == \
             ["python", SERVER_ENTRY_POINT]
+
+
+class TestTenantOverrides:
+    """What one tenant deployment of a multi-tenant setup sets.
+
+    Two tenants are two compose projects over this same file, differing in one
+    variable. Checked here rather than only in tests/compose/test_multitenant.py
+    because this costs a second and that costs three minutes, and because the
+    failure it catches — the variable reaching some services and not others — is
+    invisible from the outside: the modules that missed it keep working, on
+    another tenant's traffic. See runner/tenants.py.
+    """
+
+    def test_a_tenant_deployment_tenants_every_module(self):
+        for key, service in _modules(_config(CLTL_TENANT=TENANT)).items():
+            assert service["environment"]["CLTL_TENANT"] == TENANT, key

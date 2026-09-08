@@ -22,10 +22,13 @@ import time
 import pytest
 import requests
 
-from cltl_integration.__main__ import (CHAT_PAGE, COMPONENT_ROOT, describe,
-                                       parse_args, resolve)
+from cltl_integration.__main__ import (CHAT_PAGE, COMPONENT_ROOT, _modules,
+                                       _topologies, describe, main, parse_args,
+                                       resolve)
 from cltl_integration.drivers.chat import ChatClient
-from cltl_integration.topology import DEPLOYMENTS, TOPOLOGIES
+from cltl_integration.__main__ import scenarios
+from cltl_integration.topology import (DEPLOYMENTS, TENANT_DEPLOYMENTS,
+                                       TOPOLOGIES, Topology)
 
 STARTUP_TIMEOUT = 120.0
 SHUTDOWN_TIMEOUT = 90.0
@@ -36,12 +39,37 @@ class TestArguments:
     def test_every_scenario_is_listed(self):
         listing = describe()
 
-        for name in list(TOPOLOGIES) + list(DEPLOYMENTS):
+        for name in list(TOPOLOGIES) + list(DEPLOYMENTS) + list(TENANT_DEPLOYMENTS):
             assert name in listing
 
     def test_a_hyphenated_name_resolves(self):
         """`make demo-text-pipeline` reads better than demo-text_pipeline."""
         assert resolve("text-pipeline") is TOPOLOGIES["text_pipeline"]
+
+    def test_every_scenario_unwraps_into_topologies(self):
+        """A scenario kind the launcher does not unwrap fails two frames away.
+
+        `_topologies` and `_modules` are what tell the launcher whether to start a
+        stub microphone and what URLs to print, and both walk a scenario without
+        knowing which kind it is. A `TenantDeployment` that fell through to
+        `(scenario,)` reached `needs_microphone` as though it were a Topology and
+        died on `.modules` inside a context manager, before anything was printed.
+        """
+        for name, scenario in scenarios().items():
+            topologies = _topologies(scenario)
+
+            assert topologies, name
+            for topology in topologies:
+                assert isinstance(topology, Topology), (name, topology)
+            assert _modules(scenario) == set().union(
+                *(set(t.modules) for t in topologies)), name
+
+    def test_a_multi_tenant_deployment_refuses_the_in_process_tier(self):
+        """A tenant is a routing key, and SynchronousEventBus has none."""
+        with pytest.raises(SystemExit) as error:
+            main(["multitenant", "--tier", "inprocess"])
+
+        assert "Use --tier compose" in str(error.value)
 
     def test_an_unknown_scenario_says_what_there_is(self):
         with pytest.raises(SystemExit) as error:

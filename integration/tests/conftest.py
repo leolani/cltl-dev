@@ -12,7 +12,8 @@ import pytest
 from cltl_integration.runner.compose import ComposeRunner
 from cltl_integration.runner.inprocess import InProcessRunner, reset_process_state
 from cltl_integration.runner.split import SplitRunner
-from cltl_integration.topology import Deployment, Topology
+from cltl_integration.runner.tenants import TenantRunner
+from cltl_integration.topology import Deployment, TenantDeployment, Topology
 
 COMPOSE_TIMEOUT = 900
 
@@ -101,6 +102,30 @@ def split(tmp_path):
 
     def _start(deployment: Deployment, **kwargs) -> SplitRunner:
         runner = SplitRunner(
+            deployment, storage_dir=tmp_path / deployment.name, **kwargs)
+        started.append(runner)
+        return runner.start()
+
+    yield _start
+
+    for runner in reversed(started):
+        runner.stop()
+
+
+@pytest.fixture
+def tenants(tmp_path):
+    """Factory starting multi-tenant deployments, torn down in reverse.
+
+    One compose project per tenant plus one for the shared server, so a
+    two-tenant deployment costs about half again what ``split`` does. Same
+    function scope, and for the same reason: the server half is a
+    ``ComposeRunner``, and only one of those may own the process's configuration
+    at a time.
+    """
+    started = []
+
+    def _start(deployment: TenantDeployment, **kwargs) -> TenantRunner:
+        runner = TenantRunner(
             deployment, storage_dir=tmp_path / deployment.name, **kwargs)
         started.append(runner)
         return runner.start()

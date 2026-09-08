@@ -90,7 +90,7 @@ manual test collected without a terminal skips rather than blocking on
 src/cltl_integration/
   __main__.py           # the demo front end: run a scenario, no assertions
   modules.py            # the module registry — one source of truth
-  topology.py           # Topology, Deployment, config layering
+  topology.py           # Topology, Deployment, TenantDeployment, config layering
   serialization.py      # emissor type-var registration shared by both tiers
   fixtures.py           # the phrases the suite speaks, and `make speech-fixtures`
   images.py             # the tier-2 image freshness check
@@ -99,6 +99,7 @@ src/cltl_integration/
     inprocess.py        # tier 1: DI containers composed in this process
     compose.py          # tier 2: the images, under a unique compose project
     split.py            # tier 2: two compose projects — the client/server split
+    tenants.py          # tier 2: one shared server, N tenant deployments
   drivers/
     audio.py            # synthetic PCM + a stub microphone HTTP server
     tts.py              # a stub loudspeaker: the endpoint a remote TTS exposes
@@ -117,7 +118,8 @@ config/
   tier-inprocess.config # what differs for the in-process runner
   tier-compose.config   # what differs for the compose runner
   logging.config        # mounted into every container
-  topologies/           # per-topology enable/disable, incl. the four csplit halves
+  topologies/           # per-topology enable/disable, incl. the csplit and
+                        # multitenant halves
 tests/
   test_build_smoke.py   # the offline venv really contains the platform
   test_topology.py      # the harness itself: topologies and container synthesis
@@ -155,9 +157,10 @@ Tier 2 (`tests/compose/`):
 | `test_audio_pipeline.py` | speech in, an answer in the chat UI — six containers, Whisper, `slow` |
 | `test_spoken_consent.py` | consent given out loud: Whisper's transcript drives the BDI handshake |
 | `test_csplit.py` | the client/server split: two stacks, two networks, remote storage |
+| `test_multitenant.py` | one shared cltl-eliza and two tenant deployments on one broker: does the tenant id isolate them |
 | `test_compose_file.py` | the compose file still says what the registry and the runners assume |
 
-Five tests are `xfail(strict=True)` against defects in the modules, so that
+Six tests are `xfail(strict=True)` against defects in the modules, so that
 fixing one turns the suite red and forces the marker out. Each carries the file,
 the line and the fix in its `reason`.
 
@@ -215,8 +218,9 @@ What only this can cover:
 A `Deployment` is two `Topology` objects rather than one with more modules in
 it, and it validates the pairing: the server half must carry the storage
 endpoint, and no module except cltl-backend may appear on both halves — two
-instances of one module bind their queues to the same routing key, so RabbitMQ
-shares the events out between them instead of delivering to both.
+instances of one module bind their own queues to the same routing key
+(`_EventBusConsumer` gives each subscriber an exclusive queue), so every event is
+delivered to both and processed twice.
 
 Only one of the two stacks may be a `ComposeRunner`. The test process's
 configuration lives in a class attribute of `LocalConfigurationContainer`, so a
@@ -224,6 +228,85 @@ second `load_configuration` replaces the first rather than adding to it. The
 server owns it, because the server owns the broker the probe joins; the client
 half is a plain `ComposeStack`, which brings containers up and otherwise keeps
 out of the way.
+
+## Multi-tenancy
+
+The other deployment the platform is meant to support: expensive, stateless
+modules deployed **once** and shared, with a deployment per tenant around them
+holding the conversation. `tests/compose/test_multitenant.py` runs it — three
+compose projects over the same `docker-compose.yml`:
+
+```
+tenant-a project            server project           tenant-b project
+--------------------        --------------------     --------------------
+cltl-context          --->  cltl-eliza        <---    cltl-context
+cltl-chat-ui                rabbitmq                  cltl-chat-ui
+cltl-emissor-data                                     cltl-emissor-data
+  tenant: tenant-a            tenant: (empty)           tenant: tenant-b
+```
+
+**The boundary is a routing key, not a network.** That is the whole difference
+from the client/server split above, where isolation is the absence of a route.
+Here all three projects share one broker, one exchange and one vhost, and what
+keeps two tenants apart is what their buses bind:
+
+- a **tenanted** bus publishes on `<topic>.<tenant>` and binds `<topic>.<tenant>`,
+  so it can neither reach nor be reached by another tenant;
+- an **untenanted** bus binds `<topic>.#`, which matches every tenant, and
+  publishes on the *event's* tenant rather than its own;
+- `Event.with_source` copies the tenant onto a derived event, and `tenant` is a
+  field of `EventMetadata`, so it survives `marshal`/`unmarshal`.
+
+Those last two are what make a shared module work: a tenant's utterance reaches
+the one cltl-eliza, its reply is built with `source=event` and so still carries
+the tenant, and the untenanted bus routes that reply straight back to the tenant
+that asked. Nothing in the server is tenant-aware; it never has to be.
+
+Because a single vantage point could be right by accident, the test asserts at
+four levels: the untenanted probe beside the server (which sees every tenant), a
+tenanted probe inside each tenant (which *cannot* see another, by construction),
+the chat UI a person would be looking at, and each tenant's own storage root.
+
+### Two limitations this deployment has to design around
+
+- **No shared module may be gated on an intention.** `TopicWorker` keeps one
+  active flag per worker and never reads `event.metadata.tenant`, so a module
+  serving every tenant is gated by whichever tenant published an intention last.
+  `config/topologies/multitenant_server.config` therefore runs cltl-eliza with
+  `intentions:` empty — and empties its `topic_intention` too, since
+  `ElizaService.start` subscribes to a non-empty one regardless. Pinned by
+  `tests/slices/test_intention_routing.py::TestTenantScopedGating`, which
+  reproduces it in-process in milliseconds.
+- **Eliza's greeting is untenanted.** Its intention branch publishes
+  `Event.for_payload(payload)` with no `source`, so the tenant is lost and the
+  greeting is routed to the bare `cltl.topic.text_out` key that no tenant binds.
+  Unreachable in this topology only because the intention topic is emptied above;
+  `test_multitenant.py` asserts no untenanted reply ever appears, so re-enabling
+  it fails readably rather than losing a greeting.
+
+### `CLTL_TENANT` is stated by every stack and inherited by none
+
+`ComposeStack._compose_env` starts from `os.environ`, which a running
+`ComposeRunner` has already written to — the same trap that once gave the
+csplit client the server's `CLTL_BACKEND_MAIN`. So `_compose_env` assigns
+`CLTL_TENANT=""` before applying a stack's own environment, `ComposeRunner._attach`
+does the same for the test process, and `TenantRunner` states the tenant
+explicitly for every stack it starts. Left to inherit, every tenant would come up
+as the server and the isolation under test would simply be absent, with nothing
+logged.
+
+The setting itself lives in the two `config/topologies/multitenant_*.config`
+overlays rather than in `tier-compose.config`, deliberately: every tier-2 test's
+probe reads the tier file, and an unexpanded `$CLTL_TENANT` there would reach
+`KombuEventBus` as a literal string and bind `cltl.topic.text_out.$CLTL_TENANT` —
+deafening the whole existing suite from a one-line config edit.
+
+### Why there is no tier-1 version
+
+`SynchronousEventBus` stamps `"local"` on anything untenanted and then hands every
+event to every handler. It has no notion of a tenant at all, so in one process
+the entire deployment collapses into one and there is nothing left to assert.
+`python -m cltl_integration multitenant --tier inprocess` refuses for that reason.
 
 ## Writing a slice test
 

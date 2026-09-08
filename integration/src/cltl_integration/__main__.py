@@ -32,9 +32,11 @@ from cltl_integration.drivers.scenario import start_scenario
 from cltl_integration.runner.compose import ComposeError, ComposeRunner
 from cltl_integration.runner.inprocess import InProcessRunner
 from cltl_integration.runner.split import SplitRunner
-from cltl_integration.topology import (DEPLOYMENTS, TOPOLOGIES, Deployment,
-                                       Topology, needs_microphone,
-                                       needs_speaker)
+from cltl_integration.runner.tenants import TenantRunner
+from cltl_integration.topology import (DEPLOYMENTS, TENANT_DEPLOYMENTS,
+                                       TOPOLOGIES, Deployment,
+                                       TenantDeployment, Topology,
+                                       needs_microphone, needs_speaker)
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +56,7 @@ def scenarios() -> dict:
     A deployment is not a topology, but from a demo's point of view both are
     "a thing you can run", and a caller should not have to know which is which.
     """
-    return {**TOPOLOGIES, **DEPLOYMENTS}
+    return {**TOPOLOGIES, **DEPLOYMENTS, **TENANT_DEPLOYMENTS}
 
 
 def resolve(name: str):
@@ -77,6 +79,8 @@ def describe() -> str:
     lines += [f"  {name}" for name in sorted(TOPOLOGIES)]
     lines += ["", "Deployments (--tier compose only):"]
     lines += [f"  {name}" for name in sorted(DEPLOYMENTS)]
+    lines += ["", "Multi-tenant deployments (--tier compose only):"]
+    lines += [f"  {name}" for name in sorted(TENANT_DEPLOYMENTS)]
 
     return "\n".join(lines)
 
@@ -129,6 +133,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"{scenario.name} is a client/server split: two stacks on two "
             f"networks, which has no in-process meaning. Use --tier compose.")
 
+    if isinstance(scenario, TenantDeployment) and args.tier != "compose":
+        raise SystemExit(
+            f"{scenario.name} is a multi-tenant deployment, and a tenant is a "
+            f"routing key on a broker. SynchronousEventBus has no tenants — it "
+            f"hands every event to every handler — so in one process the whole "
+            f"scenario collapses into one. Use --tier compose.")
+
     storage = args.storage or (DEMO_ROOT / scenario.name)
     if args.storage is None and storage.exists():
         shutil.rmtree(storage)
@@ -174,8 +185,7 @@ def _microphone(scenario, args):
     read when the backend's services are constructed and the port is only known
     once the socket is bound.
     """
-    topologies = (scenario.topologies() if isinstance(scenario, Deployment)
-                  else (scenario,))
+    topologies = _topologies(scenario)
     if not any(needs_microphone(topology, _tier_of(scenario, args))
                for topology in topologies):
         return _Nothing()
@@ -195,8 +205,7 @@ def _speaker(scenario, args):
     says so nowhere — ``SynchronizedTextToSpeech.say`` swallows the error. The
     stub logs each utterance at INFO, so a demo shows what the robot would say.
     """
-    topologies = (scenario.topologies() if isinstance(scenario, Deployment)
-                  else (scenario,))
+    topologies = _topologies(scenario)
     if not any(needs_speaker(topology, _tier_of(scenario, args))
                for topology in topologies):
         return _Nothing()
@@ -206,8 +215,23 @@ def _speaker(scenario, args):
     return StubTextOutput(host=host)
 
 
+def _topologies(scenario) -> tuple:
+    """The topologies a scenario is made of, whichever kind of scenario it is.
+
+    One definition because three callers need it and a missing case here does not
+    raise where it is written: a `TenantDeployment` that fell through to
+    `(scenario,)` reached `needs_microphone` as though it were a Topology, and
+    failed on `.modules` two frames away.
+    """
+    if isinstance(scenario, (Deployment, TenantDeployment)):
+        return tuple(scenario.topologies())
+
+    return (scenario,)
+
+
 def _tier_of(scenario, args) -> str:
-    return "compose" if isinstance(scenario, Deployment) else args.tier
+    return ("compose" if isinstance(scenario, (Deployment, TenantDeployment))
+            else args.tier)
 
 
 def _utterances(texts: Sequence[str]) -> List:
@@ -232,6 +256,13 @@ def _build(scenario, args, storage: Path, mic, speaker):
         return SplitRunner(scenario, storage_dir=storage,
                            image_tag=args.image_tag,
                            client_environment=environment)
+    if isinstance(scenario, TenantDeployment):
+        # The stubs, if any, belong to every tenant: they stand in for the
+        # devices a tenant deployment is the near end of.
+        return TenantRunner(scenario, storage_dir=storage,
+                            image_tag=args.image_tag,
+                            tenant_environment={tenant: environment
+                                                for tenant in scenario.tenants})
     if args.tier == "compose":
         return ComposeRunner(scenario, storage_dir=storage,
                              image_tag=args.image_tag, environment=environment)
@@ -254,6 +285,17 @@ def _open_scenario(scenario, runner) -> None:
     exactly as ``app/py-app/app.py`` publishes at startup; without it there is no
     BDI loop to ask, so the scenario is published directly.
     """
+    if isinstance(scenario, TenantDeployment):
+        # One scenario per tenant, each opened on that tenant's own bus. Opened
+        # from the untenanted side it would be routed to the bare topic key and
+        # reach no tenant at all — which is the property the deployment exists
+        # to have, seen from the wrong end.
+        for tenant in scenario.tenants:
+            publish_intention(runner.tenant(tenant).event_bus, INTENTION_TOPIC, "init")
+            print(f"Published the 'init' intention for {tenant}; "
+                  f"its cltl-context opens the scenario.")
+        return
+
     modules = _modules(scenario)
     if "context" in modules:
         publish_intention(runner.event_bus, INTENTION_TOPIC, "init")
@@ -264,10 +306,7 @@ def _open_scenario(scenario, runner) -> None:
 
 
 def _modules(scenario) -> set:
-    if isinstance(scenario, Deployment):
-        return set().union(*(set(t.modules) for t in scenario.topologies()))
-
-    return set(scenario.modules)
+    return set().union(*(set(t.modules) for t in _topologies(scenario)))
 
 
 # -- telling the user what to do ---------------------------------------------
@@ -287,13 +326,10 @@ def report(scenario, runner, storage: Path, stub=None,
     """
     lines = ["", f"  {scenario.name} is up.", ""]
     for key in sorted(_modules(scenario)):
-        try:
-            url = runner.url(key)
-        except KeyError:
-            continue                      # no HTTP mount, or on both halves
-        lines.append(f"    {key:9} {url}")
-        if key == "chatui":
-            lines.append(f"    {'':9} {url}{CHAT_PAGE}   <- open this")
+        for url, whose in _mounts(scenario, runner, key):
+            lines.append(f"    {key:9} {url}{whose}")
+            if key == "chatui":
+                lines.append(f"    {'':9} {url}{CHAT_PAGE}{whose}   <- open this")
     if stub is not None:
         lines.append(f"    {'mic':9} {stub.url} (stub microphone)")
     if speaker is not None:
@@ -306,6 +342,30 @@ def report(scenario, runner, storage: Path, stub=None,
 
     sys.stdout.write("\n".join(lines))
     sys.stdout.flush()
+
+
+def _mounts(scenario, runner, key: str):
+    """The (url, annotation) pairs for one module — several in a multi-tenant run.
+
+    A tenant module is deployed once per tenant and every copy serves, so there is
+    no single URL to print and `runner.url` refuses to guess. The annotation says
+    which tenant a URL belongs to, so that a run with both a chat UI and an
+    EMISSOR endpoint per tenant does not print four unlabelled ports.
+
+    A KeyError is an answer, not a failure: most modules serve no HTTP at all, and
+    a module on more than one half of a deployment has to be asked for by half.
+    """
+    def _url(resolve, annotation=""):
+        try:
+            return [(resolve(key), annotation)]
+        except KeyError:
+            return []
+
+    if isinstance(scenario, TenantDeployment) and key in scenario.tenant.modules:
+        return [mount for tenant in scenario.tenants
+                for mount in _url(runner.tenant(tenant).url, f"   ({tenant})")]
+
+    return _url(runner.url)
 
 
 def _wait() -> None:

@@ -241,6 +241,12 @@ class ComposeStack:
         env["CLTL_MODEL_CACHE"] = str(MODEL_CACHE)
         env.setdefault("CLTL_AUDIO_URL", "")
         env.setdefault("CLTL_TTS_URL", "")
+        # Assigned, not setdefault: this env starts as a copy of os.environ, so a
+        # CLTL_TENANT exported in the developer's shell — or written there by a
+        # ComposeRunner already running — would otherwise tenant every stack that
+        # did not ask to be tenanted. A stack states its tenant in `environment`,
+        # which the update below applies last. See runner/tenants.py.
+        env["CLTL_TENANT"] = ""
         env.update(self._environment)
 
         return env
@@ -293,13 +299,24 @@ class ComposeStack:
 
         return tuple(json.loads(result.stdout) or ())
 
+    def logs(self) -> str:
+        """Everything the stack's containers have logged so far.
+
+        Public because _capture_logs only runs at teardown, by which point a test
+        body has finished: an assertion *about* the logs — that a warning a
+        misconfiguration would produce is absent — has to read them while the
+        stack is still up.
+        """
+        result = self._compose("logs", "--no-color", env=self._compose_env(),
+                               timeout=120, check=False)
+
+        return result.stdout + result.stderr
+
     def _capture_logs(self) -> None:
         """Container logs are the only account of a tier-2 failure."""
         path = self._root / "docker.log"
         try:
-            result = self._compose("logs", "--no-color", env=self._compose_env(),
-                                   timeout=120, check=False)
-            path.write_text(result.stdout + result.stderr)
+            path.write_text(self.logs())
             logger.info("Container logs written to %s", path)
         except Exception:
             logger.exception("Failed to capture container logs")
@@ -382,13 +399,19 @@ class ComposeRunner(ComposeStack):
             self.base_url("backend") + "/storage/" if "backend" in self._topology.modules else "")
         os.environ["CLTL_AUDIO_URL"] = ""
         os.environ["CLTL_TTS_URL"] = ""
+        # Untenanted by default, and assigned rather than defaulted for the same
+        # reason as in _compose_env: an unset $CLTL_TENANT would reach
+        # KombuEventBus as the literal string and bind `<topic>.$CLTL_TENANT`,
+        # leaving the probe silently deaf. A multi-tenant server passes its own
+        # value through `environment`.
+        os.environ["CLTL_TENANT"] = ""
         os.environ.update(self._environment)
 
         load_config(self._topology, "compose")
 
         self._container = type("ProbeContainer", (HarnessInfraContainer,), {})()
         self._probe = EventProbe(self._container.event_bus,
-                                 readiness=self._binding_readiness)
+                                 readiness=self.binding_readiness)
 
     def _detach(self) -> None:
         try:
@@ -406,8 +429,21 @@ class ComposeRunner(ComposeStack):
 
     # -- broker ------------------------------------------------------------
 
+    @staticmethod
+    def binding_key(topic: str, tenant: Optional[str] = None) -> str:
+        """The routing key a subscriber to `topic` binds, as KombuEventBus builds it.
+
+        One definition, because two things need it and they must agree: the
+        readiness check below, and any assertion about what the broker holds. See
+        `_EventBusConsumer.__init__` in cltl.combot.infra.event.kombu — a tenanted
+        bus binds its own tenant exactly, an untenanted one binds `#`, which in
+        RabbitMQ matches zero or more words and so covers every tenant *and* the
+        bare topic.
+        """
+        return f"{topic}.{tenant}" if tenant else f"{topic}.#"
+
     @contextlib.contextmanager
-    def _binding_readiness(self, topics: Sequence[str]):
+    def binding_readiness(self, topics: Sequence[str], tenant: Optional[str] = None):
         """Wrap a probe subscribe; return once the broker has bound its queues.
 
         Asks RabbitMQ rather than round-tripping a sentinel through the
@@ -420,18 +456,32 @@ class ComposeRunner(ComposeStack):
         subscribes, and "is anything bound to cltl.topic.scenario" is answered
         yes before the probe's own queue exists. Waiting for the count to rise
         is what makes the check about *this* subscription.
-        """
-        before = self._binding_counts()
-        yield
-        self._await_bindings(topics, before)
 
-    def _await_bindings(self, topics: Sequence[str],
-                        before: Mapping[str, int]) -> None:
-        expected = {f"{topic}.#": before.get(f"{topic}.#", 0) + 1 for topic in topics}
+        `tenant` names the tenant the subscribing bus is configured with, because
+        that decides the key its queue is bound to. Waiting on the untenanted
+        `<topic>.#` while a tenanted probe binds `<topic>.<tenant>` would wait for
+        a key that is never going to appear. See runner/tenants.py.
+        """
+        before = self.binding_counts()
+        yield
+        self.await_bindings(topics, before, tenant)
+
+    def await_bindings(self, topics: Sequence[str],
+                       before: Mapping[str, int],
+                       tenant: Optional[str] = None) -> None:
+        """Block until each topic has one more bound queue than `before` recorded.
+
+        Public alongside binding_counts, and for the same reason: the probe is not
+        the only subscriber whose readiness a test depends on. A multi-tenant
+        deployment has to wait for the *containers* too — pass an all-zero `before`
+        to wait for presence rather than for an increment. See runner/tenants.py.
+        """
+        keys = [self.binding_key(topic, tenant) for topic in topics]
+        expected = {key: before.get(key, 0) + 1 for key in keys}
         deadline = time.monotonic() + BINDING_TIMEOUT
         counts: Mapping[str, int] = {}
         while time.monotonic() < deadline:
-            counts = self._binding_counts()
+            counts = self.binding_counts()
             if all(counts.get(key, 0) >= wanted for key, wanted in expected.items()):
                 return
             time.sleep(0.1)
@@ -443,7 +493,13 @@ class ComposeRunner(ComposeStack):
             f"it would silently miss those topics. Routing key -> (bound, wanted): "
             f"{short}")
 
-    def _binding_counts(self) -> Mapping[str, int]:
+    def binding_counts(self) -> Mapping[str, int]:
+        """How many queues are bound to each routing key on the exchange.
+
+        Public: it is the readiness check's own instrument, and it is also the
+        only way to assert what a *deployment* routes on rather than what it
+        happened to deliver. tests/compose/test_multitenant.py uses it that way.
+        """
         url = f"{self.management_url}/api/exchanges/%2F/{EXCHANGE}/bindings/source"
         try:
             response = requests.get(url, auth=(BROKER_USER, BROKER_PASSWORD), timeout=5)

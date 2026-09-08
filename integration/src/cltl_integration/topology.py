@@ -6,6 +6,7 @@ scenario means adding one ``Topology``, not three parallel definitions.
 """
 import configparser
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Sequence, Tuple
@@ -22,6 +23,10 @@ TIER_CONFIG = {
     "inprocess": CONFIG_DIR / "tier-inprocess.config",
     "compose": CONFIG_DIR / "tier-compose.config",
 }
+
+# A tenant id becomes one word of an AMQP routing key, so it may not contain a
+# separator or a wildcard. See TenantDeployment.
+_TENANT_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 
 class TopologyError(ValueError):
@@ -115,13 +120,79 @@ class Deployment:
         shared = set(self.server.modules) & set(self.client.modules) - {"backend"}
         if shared:
             raise TopologyError(
-                f"{self.name}: {sorted(shared)} appear on both halves. Two instances "
-                f"of one module on the same bus both consume its topics, so events "
-                f"are shared out between them rather than delivered to each.")
+                f"{self.name}: {sorted(shared)} appear on both halves. Both bind a "
+                f"queue to the same routing key on the same bus, and each queue is "
+                f"its own — see _EventBusConsumer in cltl.combot.infra.event.kombu — "
+                f"so every event is delivered to both and processed twice.")
 
     def topologies(self) -> Tuple[Topology, Topology]:
         """Server first, which is also the order the two stacks start in."""
         return self.server, self.client
+
+
+@dataclass(frozen=True)
+class TenantDeployment:
+    """One shared server and N deployments of one tenant topology.
+
+    Not a :class:`Deployment` with more halves. A Deployment is one system cut in
+    two along a network; this is one *tenant* topology deployed several times over
+    the same broker, and what separates the copies is a routing key. Each tenant
+    deployment configures ``[cltl.event.kombu] tenant`` with its own id, so its bus
+    publishes on ``<topic>.<tenant>`` and binds ``<topic>.<tenant>``; the server
+    leaves the setting empty, binds ``<topic>.#`` and therefore serves every
+    tenant. A reply built with ``source=event`` carries the asking tenant back out
+    (``Event.with_source``), which is what closes the loop.
+
+    The validation rules are the inverse of a Deployment's, and for the same
+    underlying reason. A Deployment refuses one module on both halves because both
+    would receive every event; here the same module on two *tenants* is the entire
+    point, because the two bind different keys and neither matches the other's
+    traffic. What must not be shared is a module across the server/tenant line.
+
+    Only tier 2 can express it. ``SynchronousEventBus`` stamps ``"local"`` on
+    anything untenanted and hands every event to every handler, so in one process
+    a tenant means nothing.
+    """
+
+    name: str
+    server: Topology
+    tenant: Topology
+    tenants: Tuple[str, ...]
+
+    def __post_init__(self):
+        if not self.server.modules or not self.tenant.modules:
+            raise TopologyError(f"{self.name}: both halves must run something.")
+        if len(self.tenants) < 2:
+            raise TopologyError(
+                f"{self.name}: needs at least two tenants. With one there is nothing "
+                f"for the isolation to hold against, and a single tenant talking to a "
+                f"shared server is a client/server split with extra configuration.")
+        if len(set(self.tenants)) != len(self.tenants):
+            raise TopologyError(
+                f"{self.name}: duplicate tenant ids in {self.tenants}. Two stacks on "
+                f"one id are not two tenants — they bind the same keys and split the "
+                f"traffic between them.")
+        for tenant in self.tenants:
+            if not _TENANT_ID.match(tenant):
+                raise TopologyError(
+                    f"{self.name}: tenant id {tenant!r} is not a single AMQP routing-key "
+                    f"word. KombuEventBus builds `<topic>.<tenant>`, so a '.', '*' or "
+                    f"'#' quietly changes which keys that pattern matches.")
+        shared = set(self.server.modules) & set(self.tenant.modules)
+        if shared:
+            raise TopologyError(
+                f"{self.name}: {sorted(shared)} run both on the server and in every "
+                f"tenant. The server's `<topic>.#` and the tenant's `<topic>.<tenant>` "
+                f"both match the tenant's events, so each one is processed twice.")
+
+    def topologies(self) -> Tuple[Topology, Topology]:
+        """Server first, which is also the order the stacks start in.
+
+        The tenant topology appears once however many times it is deployed: the
+        deployments differ only in an environment variable, so there is one set of
+        images to check and one configuration to write.
+        """
+        return self.server, self.tenant
 
 
 def load_config(topology: Topology, tier: str,
@@ -307,6 +378,25 @@ CSPLIT_AUDIO = Deployment(
     client=CSPLIT_AUDIO_CLIENT,
 )
 
+MULTITENANT_SERVER = Topology(
+    name="multitenant_server",
+    modules=("eliza",),
+    overlay="multitenant_server.config",
+)
+
+MULTITENANT_TENANT = Topology(
+    name="multitenant_tenant",
+    modules=("context", "chatui", "emissor"),
+    overlay="multitenant_tenant.config",
+)
+
+MULTITENANT = TenantDeployment(
+    name="multitenant",
+    server=MULTITENANT_SERVER,
+    tenant=MULTITENANT_TENANT,
+    tenants=("tenant-a", "tenant-b"),
+)
+
 TOPOLOGIES: Dict[str, Topology] = {
     topology.name: topology
     for topology in (ELIZA, CONTEXT, ELIZA_CHATUI, EMISSOR, BACKEND,
@@ -314,9 +404,14 @@ TOPOLOGIES: Dict[str, Topology] = {
                      BACKEND_TTS, BACKEND_TTS_MIC, SPOKEN_PIPELINE,
                      CHATUI_IMAGE, CHATUI_MONITORING,
                      CSPLIT_SERVER, CSPLIT_CLIENT,
-                     CSPLIT_AUDIO_SERVER, CSPLIT_AUDIO_CLIENT)
+                     CSPLIT_AUDIO_SERVER, CSPLIT_AUDIO_CLIENT,
+                     MULTITENANT_SERVER, MULTITENANT_TENANT)
 }
 
 DEPLOYMENTS: Dict[str, Deployment] = {
     deployment.name: deployment for deployment in (CSPLIT, CSPLIT_AUDIO)
+}
+
+TENANT_DEPLOYMENTS: Dict[str, TenantDeployment] = {
+    deployment.name: deployment for deployment in (MULTITENANT,)
 }
