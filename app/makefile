@@ -11,7 +11,8 @@ project_dependencies ?= $(addprefix $(project_root)/, \
 		cltl-vad \
 		cltl-asr \
 		cltl-eliza \
-		cltl-chat-ui)
+		cltl-chat-ui \
+		cltl-monitoring)
 
 git_remote ?= https://github.com/leolani
 

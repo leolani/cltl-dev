@@ -126,10 +126,25 @@ Web-based chat interface — subscribes to text output events and publishes user
 | Config mount | `./config` → `/cltl-chatui/config` |
 | Storage mount | `./storage` → `/cltl-chatui/storage` |
 
+### eliza-monitoring
+
+Serves a per-scenario view of what the platform perceived: the most recent image of a
+conversation, with the regions annotated on it. The chat UI's **Monitoring** tab embeds this
+page in an iframe, which is why the port is published — the browser loads it directly, so
+`[cltl.chat-ui] monitoring_url` must name a host port (`http://localhost:8004/monitoring`) and
+never the compose service name.
+
+| Detail | Value |
+|---|---|
+| Image | `ghcr.io/leolani/cltl-monitoring` |
+| Port | `8004` (host) → `8000` (container) |
+| Config mount | `./config` → `/cltl-monitoring/config` |
+| Storage mount | `./storage` → `/cltl-monitoring/storage` |
+
 ### eliza-app
 
 Top-level orchestration container that coordinates startup and wires services together. Starts only
-after all seven component services above are healthy.
+after all eight component services above are healthy.
 
 | Detail | Value |
 |---|---|
@@ -284,6 +299,7 @@ works automatically.
 | Chat UI | http://localhost:8003/chatui/static/chat.html |
 | Backend REST API | http://localhost:8001 |
 | EMISSOR data API | http://localhost:8002/emissor |
+| Monitoring | http://localhost:8004/monitoring/static/monitoring.html?scenario=&lt;id&gt; |
 | RabbitMQ management | http://localhost:15672 (user: `eliza`, pass: `eliza123`) |
 
 ## Configuration

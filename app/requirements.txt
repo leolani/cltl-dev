@@ -7,6 +7,7 @@ cltl.vad[impl,service]
 cltl.emissor-data[service,client]
 cltl.chat-ui
 cltl.eliza
+cltl.monitoring
 
 # TODO Fix backend optional dependencies
 # gTTS: cltl_service.backend.backend_container imports cltl.backend.source.local_tts

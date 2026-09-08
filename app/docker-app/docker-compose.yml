@@ -119,6 +119,25 @@ services:
     networks:
       - eliza-network
 
+  eliza-monitoring:
+    image: ghcr.io/leolani/cltl-monitoring:${VERSION:-latest}
+    container_name: ${COMPOSE_PROJECT_NAME}-monitoring
+    # Published because the chat UI's Monitoring tab is an iframe the *browser*
+    # loads: [cltl.chat-ui] monitoring_url points at this host port, and the two
+    # have to stay in step.
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./config:/cltl-monitoring/config
+      - ./storage:/cltl-monitoring/storage
+    environment:
+      - CLTL_LOGGING_CONFIG=/cltl-monitoring/config/logging.config
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eliza-network
+
   eliza-chatui:
     image: ghcr.io/leolani/cltl-chat-ui:${VERSION:-latest}
     container_name: ${COMPOSE_PROJECT_NAME}-chatui

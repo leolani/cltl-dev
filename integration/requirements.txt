@@ -11,6 +11,7 @@ cltl.asr[service]
 cltl.emissor-data[service,client]
 cltl.chat-ui
 cltl.eliza
+cltl.monitoring
 
 # cltl.asr is deliberately installed WITHOUT [impl] and [whisper]: those pull
 # torch, transformers, speechbrain and openai-whisper. ASR backends are imported

@@ -113,6 +113,18 @@ services:
       <<: *cltl-env
       CLTL_LOGGING_CONFIG: /cltl-chatui/config/logging.config
 
+  monitoring:
+    <<: *cltl-service
+    image: ghcr.io/leolani/cltl-monitoring:${CLTL_IMAGE_TAG:-latest}
+    ports:
+      - "8000"
+    volumes:
+      - ${CLTL_CONFIG_DIR:?set by ComposeRunner}:/cltl-monitoring/config:ro
+      - ${CLTL_STORAGE_DIR:?set by ComposeRunner}:/cltl-monitoring/storage
+    environment:
+      <<: *cltl-env
+      CLTL_LOGGING_CONFIG: /cltl-monitoring/config/logging.config
+
   eliza:
     <<: *cltl-service
     image: ghcr.io/leolani/cltl-eliza:${CLTL_IMAGE_TAG:-latest}

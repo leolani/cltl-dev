@@ -16,6 +16,7 @@ from cltl_service.combot.event_log.service import EventLogService
 from cltl_service.context.container import ContextComponentsContainer
 from cltl_service.eliza.container import ElizaContainer
 from cltl_service.emissordata.container import EmissorStorageContainer
+from cltl_service.monitoring.container import MonitoringContainer
 from cltl_service.vad.container import VADContainer
 from eliza_app_service.context.service import ContextService
 from emissor.representation.util import serializer as emissor_serializer, marshal, unmarshal, register_type_var
@@ -67,7 +68,7 @@ class InfraContainer(_InfraContainer):
 
 class ApplicationContainer(InfraContainer,
                            ElizaContainer, ContextComponentsContainer,
-                           ChatUIContainer,
+                           ChatUIContainer, MonitoringContainer,
                            ASRContainer, VADContainer,
                            EmissorStorageContainer, BackendContainer):
     @property
@@ -128,6 +129,10 @@ def main():
         }
         if started_app.server:
             routes['/host'] = started_app.server.app
+        # Optional, and `@singleton` cannot hold None, so this is False rather
+        # than None when the [cltl.monitoring] section is absent.
+        if started_app.monitoring_service:
+            routes['/monitoring'] = started_app.monitoring_service.app
 
         web_app = DispatcherMiddleware(Flask("Eliza app"), routes)
 

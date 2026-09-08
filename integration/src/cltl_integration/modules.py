@@ -114,6 +114,14 @@ MODULES: Tuple[Module, ...] = (
         mounts=(("/chatui", "chatui_service"),),
     ),
     Module(
+        key="monitoring",
+        container="cltl_service.monitoring.container:MonitoringContainer",
+        image="ghcr.io/leolani/cltl-monitoring",
+        requirement="cltl.monitoring",
+        workdir="/cltl-monitoring",
+        mounts=(("/monitoring", "monitoring_service"),),
+    ),
+    Module(
         key="asr",
         container="cltl_service.asr.container:ASRContainer",
         image="ghcr.io/leolani/cltl-asr",
