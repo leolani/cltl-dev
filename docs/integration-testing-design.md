@@ -120,6 +120,17 @@ alone: an unknown module, a duplicate, a `Deployment` whose halves overlap. It
 does not validate configuration — the one rule that was written for it, the
 audio-lock rule, turned out not to be a rule at all (see the risk table).
 
+Two composite types sit beside `Topology`, and they are not variants of each
+other. A **`Deployment`** is one system cut in two along a network — the near half
+and the far half — and it refuses a module on both halves, because both would bind
+their own queue to the same routing key and process every event twice. A
+**`TenantDeployment`** is one *tenant* topology deployed N times over one broker,
+plus a shared server topology; there the same module on two tenants is the entire
+point, because each tenant's bus binds `<topic>.<tenant>` and neither matches the
+other's traffic. What it refuses instead is a module on both the server and the
+tenant, an id that is not a single AMQP routing-key word (a `.`, `*` or `#` would
+change which keys the pattern matches), and fewer than two tenants.
+
 ### 3. Runners — two realisations, one control surface
 
 ```python
@@ -160,9 +171,28 @@ is registered as a side effect of `KombuEventBusContainer.kombu_event_bus`
 **The probe needs a readiness handshake in tier 2.** `KombuEventBus.subscribe`
 declares an `exclusive`, `auto_delete` queue and starts a `ConsumerMixin` thread,
 returning *before* the queue is bound. Events published in the first ~100 ms are
-silently dropped. `EventProbe.subscribe()` must publish a sentinel on the probed
-topic and block until it observes it. Tier 1's `SynchronousEventBus.subscribe` is
-synchronous and lossless, so this is tier-2-only plumbing behind a shared API.
+silently dropped. Tier 1's `SynchronousEventBus.subscribe` is synchronous and
+lossless, so this is tier-2-only plumbing behind a shared API.
+
+*Implemented differently from the sentinel this design first proposed.* A sentinel
+would have to travel on a real topic, where the modules would try to process it,
+log a traceback apiece and leave an event in the probe's record that no assertion
+expects. `ComposeRunner.binding_readiness` instead reads RabbitMQ's management API
+and waits for the binding *count* on the probed routing key to rise — counts
+rather than presence, because the modules are already bound to the same topics. It
+takes a `tenant`, because that decides the key: `<topic>.<tenant>` for a tenanted
+bus, `<topic>.#` for an untenanted one.
+
+**A third runner, `runner/tenants.py`.** `TenantRunner` is the `TenantDeployment`
+equivalent of `SplitRunner`: one `ComposeRunner` for the shared server (it owns
+the broker, the process's configuration and the untenanted probe) and one plain
+`ComposeStack` per tenant. To *act* as a tenant the test process also needs a
+tenanted bus — an untenanted publish lands on the bare `<topic>` key that no
+tenant binds — so `tenant_event_bus()` builds a `KombuEventBus` over a small
+dict-backed `ConfigurationManager`, taking broker, exchange and compression from
+the loaded configuration and overriding only `tenant`. It registers the
+`cltl-json` serializer explicitly rather than relying on the container having been
+built first.
 
 ### What the two tiers actually share
 
@@ -251,6 +281,12 @@ Only `backend`(storage), `chat-ui` and `emissor-data` expose a Flask `.app`;
   in-process meaning). Two compose projects on two networks: cltl-context and
   cltl-chat-ui on the client, cltl-eliza and storage on the server, the client's
   audio stored remotely. `slow` for the spoken half.
+- `test_multitenant.py` — one shared cltl-eliza and two tenant deployments on one
+  broker (tier 2 only; `SynchronousEventBus` has no tenants). Three compose
+  projects: the tenants hold the conversation and each keep their own EMISSOR
+  store, the server answers all of them, and the isolation is asserted at four
+  levels — the untenanted probe, a tenanted probe per tenant, the chat UI and the
+  disk.
 
 Ported from `app/docker-app/tests/integration/test_*.py`, which stayed in place
 until the new suite was green and were removed with `app/`.
@@ -360,6 +396,7 @@ Three layers plus environment interpolation.
    |---|---|---|
    | `[cltl.event] implementation` | `internal` | `kombu` |
    | `[cltl.event.kombu] server` | — | `amqp://…@rabbitmq:5672/` |
+   | `[cltl.event.kombu] tenant` | — | `$CLTL_TENANT`, but only in the two `multitenant_*` overlays |
    | `[cltl.backend] storage_url`, `[cltl.backend.remote_storage] storage_url` | `http://127.0.0.1:$PORT/storage/` | `http://eliza-backend:8000/storage/` |
    | `[cltl.backend] server_audio_url` | `http://127.0.0.1:$STUB_PORT` | `http://host.docker.internal:$STUB_PORT` |
    | storage paths (`audio_storage_path`, `[cltl.emissor-data] path`, `[cltl.event_log] log_dir`) | absolute host path | `<workdir>/storage/…` |
@@ -368,7 +405,14 @@ Three layers plus environment interpolation.
    (`cltl-combot/src/cltl/combot/infra/config/local.py:42`), which already
    expands `$VAR`/`${VAR}` from `os.environ` at read time. The runner sets the
    variables in its own env (tier 2: via compose `environment:`) and the config
-   files stay static. Set them all — `before_read` warns on every unexpanded `$`.
+   files stay static. Set them all — `before_read` warns on every unexpanded `$`,
+   and an unexpanded value is *used*, not skipped: `$CLTL_TENANT` reaching
+   `KombuEventBus` as a literal string binds `cltl.topic.text_out.$CLTL_TENANT`
+   and deafens the subscriber silently. That is why `tenant` lives in the
+   multitenant overlays rather than in the tier file every tier-2 probe reads,
+   and why `ComposeStack._compose_env` and `ComposeRunner._attach` both *assign*
+   `CLTL_TENANT=""` rather than defaulting it: both start from `os.environ`,
+   which a running `ComposeRunner` has already written to.
 
 3. **`config/topologies/<name>.config`** — enables exactly what this topology
    needs (`[cltl.asr] implementation:` empty vs `whisper`, `[cltl.backend.mic] topic:`
@@ -788,6 +832,10 @@ would be probed.
 | Fixed host ports forced the existing suite into serialized sessions with 5 `up` retries (`app/docker-app/tests/integration/conftest.py:65`) | Ephemeral host ports + unique project name; intra-network traffic keeps using service names (verified: `storage_url: http://eliza-backend:8000/storage/`, `server: amqp://…@rabbitmq:5672/`) |
 | The stub audio server dials *in* from containers on a hardcoded 9876 | Bind the stub on port 0, read `getsockname()[1]`, export it as `$STUB_PORT`, *then* `compose up`; the backend fragment needs `extra_hosts: "host.docker.internal:host-gateway"` |
 | Whisper pulls ~140 MB on first run | Only in `slow`-marked tier-2 topologies, with a warmed cache volume |
+| **Intention gating is not tenant-aware.** `TopicWorker._check_intention` keeps one active flag per worker and never reads `event.metadata.tenant`, so a module shared across tenants is gated by whichever tenant published an intention last — tenant B returning to `init` silently deactivates the shared module for tenant A mid-conversation | No module on the shared side of a `TenantDeployment` may be gated: `config/topologies/multitenant_server.config` leaves `[cltl.eliza] intentions` empty *and* empties `topic_intention`, since `ElizaService.start` subscribes to a non-empty one regardless. Pinned in-process by `tests/slices/test_intention_routing.py::TestTenantScopedGating` (`xfail(strict=True)`) |
+| **Eliza's greeting loses the tenant.** Its intention branch publishes `Event.for_payload(payload)` with no `source`, so the reply is untenanted and routed to a bare `<topic>` key no tenant binds — the greeting reaches nobody | Unreachable in the multitenant topology because the intention topic is emptied above. `test_multitenant.py` asserts no untenanted `text_out` event ever appears, so re-enabling it fails readably instead of losing a greeting |
+| **`EventLogService` mistakes routing keys for topics.** It subscribes to `event_bus.topics` when `[cltl.event_log.event]` is unset, and `KombuEventBus.topics` unions consumed topics with the tenant-suffixed keys it has *produced on* — so on a shared bus it would subscribe to `cltl.topic.text_out.tenant-a` as though that were a topic | Not reachable in the harness: only `cltl-backend/src/main.py` constructs it, gated on `[cltl.event] log_dir`, and the harness puts `log_dir` under `[cltl.event_log]`. Recorded in `multitenant_server.config` as one reason that deployment carries no backend |
+| `Event.with_tenant` / `with_scenario` / `with_source` short-circuit on `hasattr(event, 'tenant')`, but the field is on `event.metadata` — the guard is always `False` | Harmless: the fast path never fires and a new `Event` is always built. Noted so the next reader does not mistake it for working caching |
 | A tier-2 failure without container logs is undebuggable | Keep the prior art's `docker compose logs` → file on teardown |
 
 ---
