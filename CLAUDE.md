@@ -251,6 +251,20 @@ cd py-app && python app.py
   replay. `[cltl.chat-ui] monitoring_url` is the URL the **browser** uses to
   reach it: root-relative under the app's dispatcher, a published host port in
   Compose (never the compose service name), and empty to leave the tab out.
+- Monitoring face names: a face is labelled with its vector identity
+  (`face-1`) unless the deployment supplies a `NameResolver`
+  (`cltl/monitoring/api.py`). The one implementation,
+  `cltl_service/monitoring/friends.py`, needs `cltl.friends` — which ships
+  inside the **`cltl.leolani`** distribution and pulls `cltl.brain`,
+  `cltl.object-recognition`, `cltl.face-recognition`, `cltl.triple_extraction`
+  and `cltl.reply_generation` behind it. None of that is a submodule here and
+  `cltl-requirements/leolani/` is fed only by this repo's own submodules, so it
+  is **not installable in this repo** and the resolver is always absent. Nothing
+  under `cltl_service/monitoring/{service,container}.py` imports it; the choice
+  is made in `cltl-monitoring/src/main.py`, which is a top-level module and so
+  not part of the installed distribution. A deployment that has the package adds
+  a `[cltl.friends]` section and overrides `monitoring_name_resolver` in its own
+  container. See `docs/plans/monitoring-optional-names.md`.
 
 ## Runtime Endpoints
 
