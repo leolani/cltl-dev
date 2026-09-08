@@ -37,10 +37,13 @@ work; retiring it is a later, separate decision.
 ### Non-goals
 
 - Fixing the stale module-level unit tests (separate, per-submodule work).
-- `cltl-monitoring` is out of scope: it has no DI container, imports
-  `cltl.object_recognition` and `cltl.friends` unconditionally at module level
-  (neither exists in this workspace), and its `config/default.config` has no
-  `[cltl.monitoring]` section. It cannot be composed until those are fixed.
+- ~~`cltl-monitoring` is out of scope~~ — **resolved.** It was excluded because
+  it had no DI container, imported `cltl.object_recognition` and `cltl.friends`
+  unconditionally at module level (neither exists in this workspace), and its
+  `config/default.config` had no `[cltl.monitoring]` section. All three were
+  fixed when the chat UI gained its Monitoring tab; the module is now in the
+  registry, in `compose/docker-compose.yml`, and covered by the
+  `chatui_monitoring` topology.
 - Retiring `app/`.
 
 ---

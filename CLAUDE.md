@@ -20,6 +20,7 @@ The Eliza App is an event-driven conversational AI built on the CLTL (Computatio
 | `cltl-eliza` | ELIZA-style conversational logic |
 | `cltl-chat-ui` | Web-based text chat interface |
 | `cltl-emissor-data` | Event-driven EMISSOR data persistence service |
+| `cltl-monitoring` | Per-scenario view of what the platform perceived; serves the page the chat UI's Monitoring tab embeds |
 | `cltl-context` | Conversation context and scenario management (lives in `app/src/eliza_app_service/context/`) |
 | `app` | Application entry point — wires all containers, Flask dispatcher, `py-app/app.py` |
 | `integration` | Integration tests for the modules — composes topologies and asserts the boundaries hold. Not a submodule; see `integration/README.md` and `docs/integration-testing-design.md` |
@@ -233,9 +234,23 @@ cd py-app && python app.py
   storage_url`; keep the two in step or the persisted signal references pixels
   nothing can fetch. See `docs/plans/chat-ui-image-annotation.md` and
   `docs/chat-ui-frontend-alternatives.md`.
+- Chat UI panels: the column beside the conversation is a tab strip — `Image`
+  (the annotator) and `Monitoring` (an iframe onto cltl-monitoring's page).
+  `GET /chatui/config` tells the page which of the two this deployment offers;
+  a tab whose feature is off is left out, a single remaining tab loses the strip,
+  and neither leaves the whole column out. See
+  `docs/plans/chat-ui-monitoring-tab.md`.
 - EMISSOR persistence: `[cltl.emissor-data] flush_interval: 0` writes signals as
   they arrive. The library default of -1 keeps them in memory until a clean
   scenario stop, so an interrupted run loses the conversation.
+- Monitoring: `[cltl.monitoring]` holds one view **per scenario**, keyed by
+  `scenario_id`, and serves it at `/monitoring/scenarios/<scenario_id>/image.jpg`.
+  `active_interval: 0` records whether or not anything is polling — the shipped
+  component default of 15 exists for a camera-fed deployment, and in this app it
+  would silently drop an image submitted while nobody had the tab open, with no
+  replay. `[cltl.chat-ui] monitoring_url` is the URL the **browser** uses to
+  reach it: root-relative under the app's dispatcher, a published host port in
+  Compose (never the compose service name), and empty to leave the tab out.
 
 ## Runtime Endpoints
 
@@ -247,6 +262,7 @@ After `python app.py`:
 | `http://localhost:8000/chatui/static/chat.html` | Chat UI |
 | `http://localhost:8000/emissor` | EMISSOR data API |
 | `http://localhost:8000/storage` | Storage service |
+| `http://localhost:8000/monitoring/static/monitoring.html?scenario=<id>` | Monitoring view (embedded in the chat UI's Monitoring tab) |
 
 ## Deployment Options
 
