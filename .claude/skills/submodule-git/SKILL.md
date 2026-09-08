@@ -22,16 +22,16 @@ submodules have an `origin` on github.com/leolani.
 
 ## Repository shape
 
-- 12 gitlinks in `.gitmodules`: `emissor`, `util`, `cltl-combot`,
-  `cltl-emissor-data`, `cltl-chat-ui`, `app/util`, `cltl-eliza`, `cltl-backend`,
-  `cltl-asr`, `cltl-vad`, `cltl-context`, `cltl-monitoring`.
-- **`app/`, `cltl-requirements/` and `integration/` are NOT submodules.** They
-  are components in the root makefile's `project_components` but ordinary tracked
-  directories in the parent, so changes there — including `app/VERSION` and
-  `integration/VERSION` churn — are parent-repo changes. `make git-reset-version`
-  uses `git submodule foreach` and therefore never touches either.
-- `util` and `app/util` are both the `leolani/cltl-build` repo. Only
-  `make update-build` should move them.
+- 11 gitlinks in `.gitmodules`: `emissor`, `util`, `cltl-combot`,
+  `cltl-emissor-data`, `cltl-chat-ui`, `cltl-eliza`, `cltl-backend`, `cltl-asr`,
+  `cltl-vad`, `cltl-context`, `cltl-monitoring`.
+- **`cltl-requirements/` and `integration/` are NOT submodules.** They are
+  components in the root makefile's `project_components` but ordinary tracked
+  directories in the parent, so changes there — including `integration/VERSION`
+  churn — are parent-repo changes. `make git-reset-version` uses
+  `git submodule foreach` and therefore never touches them.
+- `util` is the `leolani/cltl-build` repo, vendored again as a nested `util`
+  submodule inside every component. Only `make update-build` should move it.
 
 ## The VERSION rule
 
@@ -79,7 +79,7 @@ git -C <sub> add -u -- . ':(exclude)VERSION'
 
 The overview to reach for first: one line per component saying whether it holds
 real work, followed by the files under it. Read-only, commits nothing. With
-module names (`cltl-asr`, `app`, `integration`, …) only those are reported.
+module names (`cltl-asr`, `integration`, …) only those are reported.
 
 ```bash
 cd /workspaces/cltl-dev
@@ -133,10 +133,10 @@ done
 
 echo
 echo '=== tracked directly in the parent (NOT submodules) ==='
-for d in app cltl-requirements integration; do
+for d in cltl-requirements integration; do
   report "$d" . "$d/VERSION" all "$d" ":(exclude)$d/VERSION"
 done
-report '(root)' . VERSION all . ':(exclude)app' ':(exclude)cltl-requirements' ':(exclude)integration' ':(exclude)VERSION'
+report '(root)' . VERSION all . ':(exclude)cltl-requirements' ':(exclude)integration' ':(exclude)VERSION'
 
 echo
 echo "real work     : ${real[*]:-none}"
@@ -170,9 +170,9 @@ Why the snippet is shaped this way:
 - Untracked directories collapse to one entry with a trailing `/` (`tests/`
   under "Untracked files:"). Expand with `git -C <sub> status -uall` when the
   contents matter.
-- The parent loop is a fixed list because `app`, `cltl-requirements` and
-  `integration` are the root makefile's non-submodule components; `(root)` is
-  everything else in the parent.
+- The parent loop is a fixed list because `cltl-requirements` and `integration`
+  are the root makefile's non-submodule components; `(root)` is everything else
+  in the parent.
 
 ### `status` — full survey: branches, staged content, pointers
 
@@ -294,7 +294,7 @@ git -C /workspaces/cltl-dev commit -m "Update submodules"
 ```
 
 Never `git add -A`, `-u`, or `.` at root. The parent working tree carries
-unrelated dirt (`app/VERSION`, `.devcontainer/` changes, `CLAUDE.md`, `.claude/`,
+unrelated dirt (`integration/VERSION`, `.devcontainer/` changes, `CLAUDE.md`, `.claude/`,
 `docs/`, stray files under `cltl-requirements/`) that must not enter a pointer
 commit. If `git diff --cached --name-only` shows anything that is not a
 submodule path, unstage everything and stop:
@@ -318,11 +318,11 @@ classified `intentional`, and never use `git submodule foreach` blindly.
 git -C /workspaces/cltl-dev/<sub> checkout -- VERSION
 ```
 
-`app/` is not a submodule, so `make git-reset-version` misses `app/VERSION`.
-Handle it explicitly when it is churn:
+`integration/` is not a submodule, so `make git-reset-version` misses
+`integration/VERSION`. Handle it explicitly when it is churn:
 
 ```bash
-git -C /workspaces/cltl-dev checkout -- app/VERSION
+git -C /workspaces/cltl-dev checkout -- integration/VERSION
 ```
 
 This is cosmetic — the next build restamps everything. Usually the right answer

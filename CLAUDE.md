@@ -4,7 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-The Eliza App is an event-driven conversational AI built on the CLTL (Computational Lexicology & Terminology Lab) framework. It is structured as a meta-repository of git submodules, each implementing one component of the system.
+This is the development environment for the Leolani platform, an event-driven
+conversational AI built on the CLTL (Computational Lexicology & Terminology Lab)
+framework. It is a meta-repository of git submodules, each implementing one
+component of the system.
+
+It ships **no application**. The example ELIZA app that used to live in `app/`
+was removed once `integration/` covered what it was actually being used for —
+composing the modules and seeing them work. What a deployment looks like is
+decided by the deployment, from the published `ghcr.io/leolani/cltl-*` images.
 
 ## Architecture
 
@@ -21,22 +29,8 @@ The Eliza App is an event-driven conversational AI built on the CLTL (Computatio
 | `cltl-chat-ui` | Web-based text chat interface |
 | `cltl-emissor-data` | Event-driven EMISSOR data persistence service |
 | `cltl-monitoring` | Per-scenario view of what the platform perceived; serves the page the chat UI's Monitoring tab embeds |
-| `cltl-context` | Conversation context and scenario management (lives in `app/src/eliza_app_service/context/`) |
-| `app` | Application entry point — wires all containers, Flask dispatcher, `py-app/app.py` |
+| `cltl-context` | Conversation context, scenario management and the BDI intention/desire loop |
 | `integration` | Integration tests for the modules — composes topologies and asserts the boundaries hold. Not a submodule; see `integration/README.md` and `docs/integration-testing-design.md` |
-
-> **Known bug**: `app/src/eliza_app_service/context/service.py:62` calls
-> `self._topic_worker.stop()` unconditionally, so shutting the app down before
-> `ContextService.start()` has run — or after a failed start — raises
-> `AttributeError: 'NoneType' object has no attribute 'stop'` and aborts the
-> container shutdown chain before cltl-emissor-data can flush. The app config
-> now sets `[cltl.emissor-data] flush_interval: 0` so a conversation is written
-> as it happens rather than only at a clean stop, but the shutdown path itself
-> is still broken; pending fix.
->
-> The related `eliza.context` / `[app.context]` section mismatch **is fixed**:
-> `app/py-app/config/default.config` now names the section `[eliza.context]`,
-> matching what `ContextService.from_config` reads.
 
 ### Event System
 
@@ -58,7 +52,7 @@ cltl_service/<component>/
 
 **`from_config` classmethod** — every service has one; it reads configuration and returns a fully wired instance. Callers never call `__init__` directly.
 
-**`app` property** — returns a Flask WSGI app (for services with HTTP endpoints) or `None`. The root `app.py` mounts non-`None` apps via `DispatcherMiddleware`.
+**`app` property** — returns a Flask WSGI app (for services with HTTP endpoints) or `None`. Whatever composes the modules mounts the non-`None` ones via `DispatcherMiddleware`; `integration/src/cltl_integration/runner/inprocess.py` is the worked example.
 
 **Lifecycle**:
 1. `container.start()` calls `super().start()` first, then `service.start()`
@@ -75,7 +69,7 @@ src/
 
 - `setup.py` uses `find_namespace_packages(include=['cltl.*', 'cltl_service.*'], where='src')`
 - `__init__.py` files **must be empty** — namespace packages break if they contain imports
-- Config section names mirror the Python package path: `[cltl.asr]`, `[cltl.asr.whisper]`, `[cltl.backend]`; the app-layer exception is `[eliza.context]`, which is read by `eliza_app_service.context`
+- Config section names mirror the Python package path, with no exceptions: `[cltl.asr]`, `[cltl.asr.whisper]`, `[cltl.backend]`, `[cltl.context]`
 
 ## Event Bus
 
@@ -98,14 +92,14 @@ Toggle via `[cltl.event] implementation: internal|kombu` in `default.config`.
 - Singleton services use `@property @singleton` — at most one instance per container class
 - **`@singleton` cannot return `None`** — use `False` as the sentinel for "intentionally absent" optional services; callers guard with `if self.asr_service:`
 - Call `ApplicationContainer.load_configuration()` before instantiating the container; it loads `default.config` plus optional `custom.config` and `credentials.config`
-- `ApplicationContainer` in `app.py` uses multiple-inheritance MRO to compose all component containers; `start()`/`stop()` chain via `super()`
+- A deployment composes the component containers into one type by multiple-inheritance MRO; `start()`/`stop()` chain via `super()`. `build_container_type` in `integration/src/cltl_integration/runner/inprocess.py` does this from a module list, and records the two ordering rules that matter: the event-bus override must be the **first** base, and start order is the **reverse** of the bases tuple
 
 ## Development Commands
 
 ### Initial Setup
 ```bash
-git clone --recurse-submodules -j8 https://github.com/leolani/eliza-app.git
-cd eliza-app
+git clone --recurse-submodules -j8 <this repository>
+cd cltl-dev
 ```
 
 ### Build and Run
@@ -114,14 +108,18 @@ cd eliza-app
 make build
 make build
 
-# Run locally
-cd app && source venv/bin/activate
-cd py-app && python app.py
+# See the modules actually running, with a chat UI to talk to
+make -C integration demos                 # what there is to run
+make -C integration demo-text-pipeline    # Ctrl-C to stop
 ```
 
-The active root makefile is the lowercase `makefile`. A byte-identical `Makefile`
-also exists, but GNU make searches `GNUmakefile` → `makefile` → `Makefile` and
-stops at the first hit, so edits to `Makefile` have no effect.
+There is no `python app.py` any more. `integration/`'s demo launcher is what
+runs the platform now — see [Demos and manual tests](#demos-and-manual-tests).
+
+The root makefile is the lowercase `makefile`, and it is the only one — git has
+never tracked a capital `Makefile` on any branch. `ls Makefile` appears to find a
+second copy only because this workspace sits on a case-insensitive filesystem, so
+both names resolve to the same inode. Edit `makefile`.
 
 The build requires Python 3.10 (see `.python-version`) and the PortAudio and
 libsndfile system headers — `pyaudio` has no aarch64 wheel and compiles from
@@ -214,20 +212,25 @@ make update-build   # Update build system (nested util submodule) across submodu
 
 `make run` and `make stop` are defined in `util/make/makefile.parent.mk` but are
 **dead targets**: they expand to `$(MAKE) --directory=$(project_name) run` with
-the root `project_name ?= "eliza-app"` (literal quotes, no such directory), and
-no component defines a `run` or `stop` target. Run the app with:
-
-```bash
-cd app && source venv/bin/activate
-cd py-app && python app.py
-```
+`project_name` quoted literally, and no component defines a `run` or `stop`
+target. Use `make -C integration demo-<name>` instead.
 
 ## Configuration
 
 ### Files
-- `app/py-app/config/default.config` — committed baseline (INI-style)
-- `app/py-app/config/custom.config` — local overrides, committed but intentionally sparse
-- `app/py-app/config/credentials.config` — secrets (gitignored); e.g. `GOOGLE_APPLICATION_CREDENTIALS`
+The loader reads `config/default.config` plus a fixed two-element list,
+`["config/custom.config", "config/credentials.config"]`, all relative to the
+working directory. In this repo the worked example is `integration/config/`:
+
+- `integration/config/base.config` — tier-neutral baseline (INI-style), every module disabled
+- `integration/config/tier-{inprocess,compose}.config` — only what differs between the two runners
+- `integration/config/topologies/<name>.config` — what a given scenario switches on
+- `credentials.config` — secrets, gitignored; e.g. `GOOGLE_APPLICATION_CREDENTIALS`
+
+Each component also ships its own `config/default.config`, but those use
+**legacy** topic names (`cltl.mic`, `cltl.chat.utterance`) and are for standalone
+`python src/main.py` runs only. A deployment that falls back to them comes up
+healthy and wired to nothing.
 
 ### Syntax
 - `$VAR` and `${VAR}` interpolation is supported in values
@@ -282,7 +285,9 @@ cd py-app && python app.py
 
 ## Runtime Endpoints
 
-After `python app.py`:
+Under a single dispatcher — what `make -C integration demo-<name>` prints, and
+what a monolithic deployment looks like. The demo launcher reports the live URLs
+for whichever modules the scenario actually includes.
 
 | Path | Service |
 |---|---|
@@ -294,8 +299,8 @@ After `python app.py`:
 
 ## Deployment Options
 
-1. **Local Python** — all components in one process (recommended for dev)
-2. **Docker Compose** — containerised with RabbitMQ (`kombu` event bus); `docker-compose.yml` at root
+1. **Local Python** — all components in one process (recommended for dev); `integration/`'s tier 1 and its in-process demos
+2. **Docker Compose** — containerised with RabbitMQ (`kombu` event bus); `integration/compose/docker-compose.yml` is the reference, covering every module plus a broker, including the client/server split
 3. **Kubernetes** — full orchestration for production
 
 ## Development Conventions
@@ -311,7 +316,7 @@ After `python app.py`:
 3. Create `cltl_service/<component>/service.py` with `from_config` and `TopicWorker`-based `_process`
 4. Create `cltl_service/<component>/container.py` extending `InfraContainer` with `@property @singleton`
 5. Add `[cltl.<component>]` section to `default.config`
-6. Wire the container into `ApplicationContainer` via MRO in `app/py-app/app.py`
+6. Add it to the registry in `integration/src/cltl_integration/modules.py`, so the harness and every topology can compose it
 
 ### Lazy ML imports
 Heavy dependencies (torch, transformers, speechbrain) must be imported inside the relevant `if implementation ==` branch in the container's factory method — never at module top-level. This keeps unconfigured backends out of the import graph. See `cltl-asr/src/cltl_service/asr/container.py` for the reference pattern.

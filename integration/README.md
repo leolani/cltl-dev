@@ -347,7 +347,8 @@ submission — pass.
   appears to do so but calls `os.makedirs` on the *parent* of its storage path,
   so a fresh storage root loses every recording to a libsndfile "System error"
   that `BackendService` catches and retries forever. See
-  `tests/slices/test_backend_storage.py`; `app/py-app` has the same problem.
+  `tests/slices/test_backend_storage.py`. The example app had the same problem,
+  and worked around it with a `mkdir -p` in its clean script.
 - Teardown costs about a second per topic worker. `TopicWorker.stop()` clears a
   flag but does not interrupt the worker's blocking `Queue.get`, so each one
   lingers until its timeout expires — three seconds for `InitService`, which is

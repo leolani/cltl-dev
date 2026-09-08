@@ -22,7 +22,7 @@ When launched at the start of a task, you will explore the codebase to produce a
 
 ### 2. Map the Architecture
 - Identify the top-level structure: packages, modules, submodules.
-- Locate the main entry point(s) (e.g., `app/py-app/app.py`) and trace initialization.
+- Locate the main entry point(s) — each component's `src/main.py`, or `integration/src/cltl_integration/runner/` for a composed one — and trace initialization.
 - Identify the dependency injection container and how services are wired.
 - Note the event bus topology: what events exist, who emits them, who consumes them.
 
@@ -85,7 +85,7 @@ Deliver your findings as a structured briefing with these sections:
 ## Self-Verification Checklist
 
 Before delivering your briefing, verify:
-- [ ] Have I identified the actual entry point for this task's domain (not just the app entry point)?
+- [ ] Have I identified the actual entry point for this task's domain (not just a top-level one)?
 - [ ] Have I traced data flow through at least 3 layers of the system?
 - [ ] Have I listed specific file paths (not just module names) for edit locations?
 - [ ] Have I checked for abstract base classes or interfaces that constrain implementation?

@@ -1,6 +1,14 @@
-# Eliza App with External Messaging (Kombu + RabbitMQ)
+# External Messaging (Kombu + RabbitMQ)
 
-This document describes how to run the Eliza application with external messaging using Kombu and RabbitMQ instead of the in-memory synchronous event bus.
+> **Historical.** This records a migration that landed. The fixes to
+> `cltl-combot` and `emissor` described below are in the code today, but the
+> `app/` directory it refers to no longer exists — it was removed along with the
+> root `docker-compose.yml`. For a working Kombu deployment see
+> `integration/compose/docker-compose.yml` and `integration/config/tier-compose.config`;
+> to run one, `make -C integration demo-<name> DEMO_FLAGS='--tier compose'`.
+
+This document describes how the platform was moved onto external messaging with
+Kombu and RabbitMQ instead of the in-memory synchronous event bus.
 
 ## Changes Made
 

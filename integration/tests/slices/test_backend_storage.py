@@ -86,9 +86,10 @@ class TestFreshStorageRoot:
         reason="CachedAudioStorage.__init__ (cached_storage.py:44) calls "
                "os.makedirs(os.path.dirname(self._storage_path)), creating the "
                "PARENT of the directory it writes into rather than the directory "
-               "itself. CachedImageStorage repeats it at line 176. Nothing in "
-               "app/py-app creates storage/audio either, so a fresh checkout of "
-               "the app persists no audio at all. Fix: drop the os.path.dirname.")
+               "itself. CachedImageStorage repeats it at line 176. A deployment "
+               "that does not pre-create storage/audio therefore persists no "
+               "audio at all, and the harness creates it for that reason. "
+               "Fix: drop the os.path.dirname.")
     def test_storage_creates_its_own_directory(self, tmp_path):
         audio_storage = CachedAudioStorage(str(tmp_path / "audio"))
 

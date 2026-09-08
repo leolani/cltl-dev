@@ -1,34 +1,46 @@
-# eliza-app
+# cltl-dev
 
-Repository for the Eliza App.
+Development environment for the Leolani platform.
 
-This repository contains all components of the Eliza app as _git_ submodules and can be used as the
-root to execute [build commands](https://github.com/leolani/cltl-build/tree/main/make) that are run on the components.
+This repository contains every component of the platform as _git_ submodules and
+is the root from which the shared
+[build commands](https://github.com/leolani/cltl-build/tree/main/make) are run
+across them.
 
-For a description of the Eliza App see to the [README](app/README.md) there.
+It ships **no application**. Each component publishes its own
+`ghcr.io/leolani/cltl-*` image and its own sdist into `cltl-requirements/`; what
+a deployment looks like is decided by the deployment. The example ELIZA app that
+used to live in `app/` was removed once `integration/` covered what it was
+actually being used for.
 
 ## Check-out
 
-To check out all code needed for the Eliza App, clone this repository including all submodules:
+Clone this repository including all submodules:
 
-        git clone --recurse-submodules -j8 https://github.com/leolani/eliza-app.git
+        git clone --recurse-submodules -j8 <this repository>
 
+## Build
 
-## Run the application
+From the repository root. Run it twice — the first pass builds the dependencies,
+the second links them:
 
-Checkout the repository as described in [Check-out](#check-out). Then go to the
-repository root, build the project, activate the virtual environment for the
-Python application and run it. Altogether:
-
-        git clone --recurse-submodules -j8 https://github.com/leolani/eliza-app.git
-        cd eliza-app
         make build
         make build
-        cd app
-        source venv/bin/active
-        cd py-app
-        python app.py
 
+## See it running
+
+`integration/` composes the modules and runs them, with assertions (the tests) or
+without (the demos):
+
+        make -C integration test           # tier 1: in-process, ~4 min, no Docker
+        make -C integration test-compose   # tier 2: the real images, ~20 min
+        make -C integration demos          # what there is to run
+        make -C integration demo-text-pipeline
+
+`make -C integration demo-text-pipeline` prints the URLs it discovered, chat page
+included, and blocks until Ctrl-C. See
+[`integration/README.md`](integration/README.md) and
+[`docs/integration-testing-design.md`](docs/integration-testing-design.md).
 
 ## Development
 

@@ -44,7 +44,12 @@ work; retiring it is a later, separate decision.
   fixed when the chat UI gained its Monitoring tab; the module is now in the
   registry, in `compose/docker-compose.yml`, and covered by the
   `chatui_monitoring` topology.
-- Retiring `app/`.
+- ~~Retiring `app/`~~ — **done, separately.** Once phases 1-6 landed, `app/`
+  was removed entirely: the example application, its two test harnesses, the
+  `app/util` gitlink, and the root `Dockerfile`/`docker-compose.yml` that built
+  and ran the `eliza-app` image. Nothing depended on it — the two-machine
+  deployment stacks that replaced it run from the published
+  `ghcr.io/leolani/cltl-*` images and never referenced it.
 
 ---
 
@@ -247,8 +252,8 @@ Only `backend`(storage), `chat-ui` and `emissor-data` expose a Flask `.app`;
   cltl-chat-ui on the client, cltl-eliza and storage on the server, the client's
   audio stored remotely. `slow` for the spoken half.
 
-Ported from `app/docker-app/tests/integration/test_*.py`, which stay in place
-until the new suite is green.
+Ported from `app/docker-app/tests/integration/test_*.py`, which stayed in place
+until the new suite was green and were removed with `app/`.
 
 ### Demos
 
@@ -757,9 +762,9 @@ now while the review is fresh:
   each other, because `generate_audio.py` writes the same buffer to both and
   says so in a comment.
 
-Both are independent of `integration/` and can stay indefinitely; they are the
-only thing that still exercises the `eliza-app` image itself, which this
-component composes modules instead of.
+**Both were removed** together with the rest of `app/`, once this review had
+established that nothing in them was still needed. The `eliza-app` image they
+exercised went with them; it had no remaining consumer.
 
 **Deliberately not ported: the attach-to-a-running-stack mode.** It is the
 diagnostics harness's whole reason for existing and the one capability this

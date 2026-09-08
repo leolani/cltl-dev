@@ -18,10 +18,6 @@
 	path = cltl-chat-ui
 	url = https://github.com/leolani/cltl-chat-ui.git
 	branch = ref_scenarios
-[submodule "app/util"]
-	path = app/util
-	url = https://github.com/leolani/cltl-build.git
-	branch = main
 [submodule "cltl-eliza"]
 	path = cltl-eliza
 	url = https://github.com/leolani/cltl-eliza.git

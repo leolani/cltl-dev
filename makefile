@@ -1,6 +1,9 @@
 SHELL = /bin/bash
 
-project_name ?= "eliza-app"
+# The meta-repo itself. It builds no image and has no run target: the example
+# application that used to live in app/ is gone, and what replaced it is
+# integration/ (tests and demos over the module images).
+project_name ?= "cltl-dev"
 
 project_components = $(addprefix ${project_root}/, \
 		emissor \
@@ -14,7 +17,6 @@ project_components = $(addprefix ${project_root}/, \
 		cltl-monitoring \
 		cltl-vad \
 		cltl-asr \
-		app \
 		integration)
 
 git_local ?= ..
