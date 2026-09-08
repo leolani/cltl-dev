@@ -37,9 +37,10 @@ x-cltl-env: &cltl-env
   # environment, pointing at 127.0.0.1, and they would leak in here.
   CLTL_AMQP_URL: ${CLTL_CONTAINER_AMQP_URL:-amqp://eliza:eliza123@rabbitmq:5672/}
   CLTL_STORAGE_URL: ${CLTL_CONTAINER_STORAGE_URL:-http://backend:8000/storage/}
-  # The stub microphone runs outside the compose network, in the process running
-  # the tests. Empty unless a topology needs it.
+  # The stub microphone and the stub loudspeaker both run outside the compose
+  # network, in the process running the tests. Empty unless a topology needs them.
   CLTL_AUDIO_URL: ${CLTL_AUDIO_URL:-}
+  CLTL_TTS_URL: ${CLTL_TTS_URL:-}
 
 x-cltl-service: &cltl-service
   depends_on:

@@ -26,13 +26,15 @@ from typing import List, Optional, Sequence
 
 from cltl_integration.drivers import audio
 from cltl_integration.drivers.audio import StubAudioServer
+from cltl_integration.drivers.tts import StubTextOutput
 from cltl_integration.drivers.bdi import publish_intention
 from cltl_integration.drivers.scenario import start_scenario
 from cltl_integration.runner.compose import ComposeError, ComposeRunner
 from cltl_integration.runner.inprocess import InProcessRunner
 from cltl_integration.runner.split import SplitRunner
 from cltl_integration.topology import (DEPLOYMENTS, TOPOLOGIES, Deployment,
-                                       Topology, needs_microphone)
+                                       Topology, needs_microphone,
+                                       needs_speaker)
 
 logger = logging.getLogger(__name__)
 
@@ -131,8 +133,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.storage is None and storage.exists():
         shutil.rmtree(storage)
 
-    with _microphone(scenario, args) as stub:
-        runner = _build(scenario, args, storage, stub)
+    with _microphone(scenario, args) as mic, _speaker(scenario, args) as speaker:
+        runner = _build(scenario, args, storage, mic, speaker)
         print(f"Starting {scenario.name} ({args.tier})...", flush=True)
         try:
             # Every runner tears its own half-started self down before raising,
@@ -144,7 +146,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise SystemExit(str(error))
         try:
             _open_scenario(scenario, runner)
-            report(scenario, runner, storage, stub)
+            report(scenario, runner, storage, mic, speaker=speaker)
             _wait()
         finally:
             print("\nStopping...", flush=True)
@@ -155,8 +157,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
 # -- assembling the run ------------------------------------------------------
 
-class _NoMicrophone:
-    """Stand-in for the stub server when the topology has no microphone."""
+class _Nothing:
+    """Stand-in for a stub server the topology has no use for."""
 
     def __enter__(self):
         return None
@@ -176,13 +178,32 @@ def _microphone(scenario, args):
                   else (scenario,))
     if not any(needs_microphone(topology, _tier_of(scenario, args))
                for topology in topologies):
-        return _NoMicrophone()
+        return _Nothing()
 
     # In tier 2 the containers reach this through host.docker.internal, which is
     # not the loopback interface, so it has to be bound on all of them.
     host = "0.0.0.0" if _tier_of(scenario, args) == "compose" else "127.0.0.1"
 
     return StubAudioServer(_utterances(args.say), host=host)
+
+
+def _speaker(scenario, args):
+    """A stub loudspeaker, if anything in the scenario will try to speak.
+
+    Same reasoning as :func:`_microphone`, and a sharper need: with nothing
+    listening on ``[cltl.backend.text_output] remote_url`` the agent is mute and
+    says so nowhere — ``SynchronizedTextToSpeech.say`` swallows the error. The
+    stub logs each utterance at INFO, so a demo shows what the robot would say.
+    """
+    topologies = (scenario.topologies() if isinstance(scenario, Deployment)
+                  else (scenario,))
+    if not any(needs_speaker(topology, _tier_of(scenario, args))
+               for topology in topologies):
+        return _Nothing()
+
+    host = "0.0.0.0" if _tier_of(scenario, args) == "compose" else "127.0.0.1"
+
+    return StubTextOutput(host=host)
 
 
 def _tier_of(scenario, args) -> str:
@@ -201,9 +222,11 @@ def _utterances(texts: Sequence[str]) -> List:
     return [audio.spoken(text) for text in texts]
 
 
-def _build(scenario, args, storage: Path, stub):
-    environment = ({"CLTL_AUDIO_URL": f"http://host.docker.internal:{stub.port}"}
-                   if stub is not None else {})
+def _build(scenario, args, storage: Path, mic, speaker):
+    def _remote(stub, key):
+        return {} if stub is None else {key: f"http://host.docker.internal:{stub.port}"}
+
+    environment = {**_remote(mic, "CLTL_AUDIO_URL"), **_remote(speaker, "CLTL_TTS_URL")}
 
     if isinstance(scenario, Deployment):
         return SplitRunner(scenario, storage_dir=storage,
@@ -213,7 +236,11 @@ def _build(scenario, args, storage: Path, stub):
         return ComposeRunner(scenario, storage_dir=storage,
                              image_tag=args.image_tag, environment=environment)
 
-    local = ({"CLTL_AUDIO_URL": stub.url} if stub is not None else {})
+    local = {}
+    if mic is not None:
+        local["CLTL_AUDIO_URL"] = mic.url
+    if speaker is not None:
+        local["CLTL_TTS_URL"] = speaker.url
 
     return InProcessRunner(scenario, storage_dir=storage, environment=local)
 
@@ -246,7 +273,7 @@ def _modules(scenario) -> set:
 # -- telling the user what to do ---------------------------------------------
 
 def report(scenario, runner, storage: Path, stub=None,
-           closing: Optional[str] = "  Ctrl-C to stop.") -> None:
+           closing: Optional[str] = "  Ctrl-C to stop.", speaker=None) -> None:
     """Print where everything ended up, in a single write.
 
     Public because the manual tests print the same thing: a person driving a
@@ -269,6 +296,9 @@ def report(scenario, runner, storage: Path, stub=None,
             lines.append(f"    {'':9} {url}{CHAT_PAGE}   <- open this")
     if stub is not None:
         lines.append(f"    {'mic':9} {stub.url} (stub microphone)")
+    if speaker is not None:
+        lines.append(f"    {'speaker':9} {speaker.url} (stub loudspeaker; replies "
+                     f"are logged as they are spoken)")
     lines += ["", f"    storage  {storage}", ""]
     if closing:
         lines += [closing, ""]

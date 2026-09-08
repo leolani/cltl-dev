@@ -86,6 +86,16 @@ test-manual: build
 	$(PYTEST) -m "$(MANUAL_MARKERS)" $(PYTEST_FLAGS) -s
 
 
+# Re-render the committed speech fixtures from espeak-ng. Needed only when a
+# phrase is added to src/cltl_integration/fixtures.py; the output is
+# byte-reproducible, so `make speech-fixtures && git diff fixtures/` is empty
+# unless something actually changed. Tests prefer the binary and fall back to
+# these files, so a machine without espeak-ng still runs the audio tiers.
+.PHONY: speech-fixtures
+speech-fixtures: build
+	@PYTHONPATH=src venv/bin/python -m cltl_integration.fixtures
+
+
 # The demo front end: the same topologies the tests use, run without assertions.
 # `make demos` lists them; `make demo-<name>` runs one and blocks until Ctrl-C.
 # Underscores and hyphens both work, so demo-text-pipeline finds text_pipeline.

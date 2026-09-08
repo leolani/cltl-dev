@@ -20,8 +20,8 @@ whose `setup.py` fails to package a file fails here and nowhere else.
 
 ```bash
 make -C integration build          # offline venv, every module from the local registry
-make -C integration test           # tier 1 — in-process, ~3 min, no Docker
-make -C integration test-compose   # tier 2 — the real images, ~18 min, needs Docker
+make -C integration test           # tier 1 — in-process, ~4 min, no Docker
+make -C integration test-compose   # tier 2 — the real images, ~20 min, needs Docker
 ```
 
 Tier 2 runs the images tagged `latest`, and nothing verifies they were built
@@ -39,8 +39,9 @@ done
 `make test-compose` refuses to start if any of them is missing, rather than
 letting a stack come up on last month's code and report green.
 
-The spoken-conversation test needs an offline text-to-speech binary; without it
-that one test skips:
+The spoken tests use an offline text-to-speech binary. Without it they fall back
+to a committed rendering of the same phrases under `fixtures/speech/`, so they
+still run — install it only to speak something new:
 
 ```bash
 sudo apt-get install -y espeak-ng
@@ -60,6 +61,7 @@ reuses it after — a bind mount rather than a compose volume, so teardown's
 | `test-manual` | The `manual` tests — needs a person at the keyboard |
 | `demos` | Lists the scenarios `demo-<name>` can run |
 | `demo-<name>` | Runs one interactively and blocks until Ctrl-C |
+| `speech-fixtures` | Re-renders `fixtures/speech/` from espeak-ng (needed only when a phrase is added) |
 | `clean` | Removes `venv/`, caches, test storage and `.demo/` |
 
 Override pytest flags with `PYTEST_FLAGS`, e.g.
@@ -88,8 +90,9 @@ manual test collected without a terminal skips rather than blocking on
 src/cltl_integration/
   __main__.py           # the demo front end: run a scenario, no assertions
   modules.py            # the module registry — one source of truth
-  topology.py           # Topology, config layering, deadlock validation
+  topology.py           # Topology, Deployment, config layering
   serialization.py      # emissor type-var registration shared by both tiers
+  fixtures.py           # the phrases the suite speaks, and `make speech-fixtures`
   images.py             # the tier-2 image freshness check
   runner/
     api.py              # Runner protocol + EventProbe
@@ -98,12 +101,15 @@ src/cltl_integration/
     split.py            # tier 2: two compose projects — the client/server split
   drivers/
     audio.py            # synthetic PCM + a stub microphone HTTP server
+    tts.py              # a stub loudspeaker: the endpoint a remote TTS exposes
     asr.py              # a recording stand-in for a speech recogniser
     bdi.py              # drive the intention/desire loop from outside
     chat.py             # ChatUI REST client
     conversation.py     # a text conversation, driven identically in both tiers
     image.py            # a synthetic PNG, and readers for signal mentions
     scenario.py         # publish ScenarioStarted without running cltl-context
+fixtures/
+  speech/               # espeak-ng's rendering of each phrase, committed
 compose/
   docker-compose.yml    # one file, all services; a topology selects a subset
 config/
@@ -114,7 +120,7 @@ config/
   topologies/           # per-topology enable/disable, incl. the four csplit halves
 tests/
   test_build_smoke.py   # the offline venv really contains the platform
-  test_topology.py      # the harness itself, incl. the audio-lock guard
+  test_topology.py      # the harness itself: topologies and container synthesis
   test_demo_launcher.py # the demo front end, started and interrupted
   slices/               # 2-3 modules each
   pipelines/            # end to end, with intention gating on
@@ -132,6 +138,7 @@ tests/
 | `slices/test_backend_vad.py` | backend, vad | microphone -> audio storage -> `VadMentionEvent` |
 | `slices/test_vad_asr.py` | backend, asr | `VadMentionEvent` -> audio fetched by range -> `AsrTextSignalEvent` |
 | `slices/test_backend_storage.py` | backend | audio stored and served back over HTTP, by range |
+| `slices/test_backend_tts.py` | backend, eliza | reply on `text_out` -> the loudspeaker, microphone open and shut |
 | `slices/test_emissor_persistence.py` | emissor | event stream -> EMISSOR scenario on disk and over HTTP |
 | `slices/test_chatui_image.py` | chatui, emissor, backend | image upload -> labelled regions -> `ImageSignalEvent` -> scenario on disk, and silence on `text_in` |
 | `slices/test_intention_routing.py` | chatui, context, eliza | how intention gating is wired onto the bus |
@@ -146,6 +153,7 @@ Tier 2 (`tests/compose/`):
 | `test_text_pipeline.py` | the same conversation as tier 1, across containers and a broker |
 | `test_backend_vad.py` | audio recorded in one container, fetched by HTTP from another |
 | `test_audio_pipeline.py` | speech in, an answer in the chat UI — six containers, Whisper, `slow` |
+| `test_spoken_consent.py` | consent given out loud: Whisper's transcript drives the BDI handshake |
 | `test_csplit.py` | the client/server split: two stacks, two networks, remote storage |
 | `test_compose_file.py` | the compose file still says what the registry and the runners assume |
 
@@ -289,7 +297,9 @@ like a demo that works.
 
 A topology with a microphone gets a stub one, started before the runner because
 `[cltl.backend] server_audio_url` is read when the backend is constructed.
-`--say TEXT` fills it with espeak-ng; without `--say`, or without espeak-ng, it
+`--say TEXT` fills it with espeak-ng — the one place the binary is genuinely
+required, because a phrase chosen at the command line has no committed
+rendering. Without `--say`, or without espeak-ng, it
 hears the synthetic tone the automatic tests use.
 
 ## Manual tests
@@ -298,14 +308,19 @@ hears the synthetic tone the automatic tests use.
 make test-manual
 ```
 
-Three tests, one question, three deployments: hold a conversation in the browser
-against the topology running in this process, against the container images, and
-across the client/server split. They exist because the automatic suite drives
+One question, three deployments: hold a conversation in the browser against the
+topology running in this process, against the container images, and across the
+client/server split. They exist because the automatic suite drives
 cltl-chat-ui's REST endpoints and never loads its page — the HTML, the
 JavaScript and the static assets inside the image are covered by nothing else.
 
-Each one cross-checks the answer it is given against the utterances the service
-recorded, so a distracted `y` cannot make a broken chat UI pass.
+A fourth drives the image annotator, whose whole input is a gesture: no
+automatic test can drag a rectangle across a picture, and what only a person can
+say is whether the rectangle they dragged is the one that got recorded.
+
+Each one cross-checks the answer it is given against what the service actually
+recorded, so a distracted `y` cannot make a broken chat UI — or an empty
+submission — pass.
 
 ## Notes
 
@@ -337,6 +352,17 @@ recorded, so a distracted `y` cannot make a broken chat UI pass.
   flag but does not interrupt the worker's blocking `Queue.get`, so each one
   lingers until its timeout expires — three seconds for `InitService`, which is
   `scheduled=3`. That is most of the suite's wall-clock time.
+- **The microphone is not what provides the audio resource.** The harness used
+  to refuse any topology that routed `text_out` to TTS without also running the
+  microphone, on the grounds that `SynchronizedMicrophone.start` is the only
+  thing that ever calls `provide_resource(AUDIO)` and that `say` would therefore
+  block forever. The first half is true; the second does not follow.
+  `BackendService.start` calls `Backend.start` unconditionally, and that starts
+  the microphone *object* whether or not `[cltl.backend.mic] topic` is set — the
+  topic gates the recording thread, not the resource. Both configurations work,
+  measured; the guard and the two validators that existed only to enforce it are
+  gone, and `tests/slices/test_backend_tts.py` runs both so the finding cannot
+  quietly rot back into a rule.
 - Tier 1 binds a **fixed** port (default 8000), not an ephemeral one.
   `[cltl.backend] storage_url` is read when services are constructed, and the VAD
   and ASR audio loaders resolve `cltl-storage:` URLs over real HTTP against it, so

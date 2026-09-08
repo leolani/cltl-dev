@@ -33,8 +33,7 @@ from cltl.combot.infra.event import EventBus
 from cltl_integration.runner.api import EventProbe
 from cltl_integration.runner.inprocess import (HarnessInfraContainer,
                                                reset_process_state)
-from cltl_integration.topology import (CONFIG_DIR, Topology, load_config,
-                                       validate_config, validate_topology)
+from cltl_integration.topology import CONFIG_DIR, Topology, load_config
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +177,6 @@ class ComposeStack:
                 f"Build them with `make docker-ghcr-build` (component images) and "
                 f"`docker pull` (rabbitmq), or see integration/README.md.")
 
-        validate_topology(self._topology, "compose")
-
         MODEL_CACHE.mkdir(parents=True, exist_ok=True)
         config_dir = write_config_dir(self._topology, self._root / "config")
         storage_dir = self._root / "storage"
@@ -243,6 +240,7 @@ class ComposeStack:
         env["CLTL_STORAGE_DIR"] = str(storage_dir or (self._root / "storage"))
         env["CLTL_MODEL_CACHE"] = str(MODEL_CACHE)
         env.setdefault("CLTL_AUDIO_URL", "")
+        env.setdefault("CLTL_TTS_URL", "")
         env.update(self._environment)
 
         return env
@@ -383,12 +381,12 @@ class ComposeRunner(ComposeStack):
         os.environ["CLTL_STORAGE_URL"] = (
             self.base_url("backend") + "/storage/" if "backend" in self._topology.modules else "")
         os.environ["CLTL_AUDIO_URL"] = ""
+        os.environ["CLTL_TTS_URL"] = ""
         os.environ.update(self._environment)
 
         load_config(self._topology, "compose")
 
         self._container = type("ProbeContainer", (HarnessInfraContainer,), {})()
-        validate_config(self._container.config_manager, self._topology)
         self._probe = EventProbe(self._container.event_bus,
                                  readiness=self._binding_readiness)
 

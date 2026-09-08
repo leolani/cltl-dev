@@ -34,6 +34,7 @@ from cltl_integration.drivers import audio
 from cltl_integration.drivers.audio import StubAudioServer
 from cltl_integration.drivers.conversation import (TEXT_IN, TEXT_OUT, TOPICS,
                                                    Conversation)
+from cltl_integration.fixtures import SPOKEN_COMPLAINT
 from cltl_integration.runner.split import CLIENT_ENTRY_POINT, SERVER_ENTRY_POINT
 from cltl_integration.topology import CSPLIT, CSPLIT_AUDIO
 
@@ -49,7 +50,7 @@ PERSIST_TIMEOUT = 15.0
 # hang.
 SPOKEN_TIMEOUT = 300.0
 
-SPOKEN_UTTERANCE = "Hello, I feel very anxious today"
+SPOKEN_UTTERANCE = SPOKEN_COMPLAINT
 
 
 @pytest.fixture
@@ -178,10 +179,11 @@ class TestSplitAudio:
 
     @pytest.fixture
     def spoken(self, split):
-        if not audio.speech_available():
-            pytest.skip("espeak-ng is not installed (sudo apt-get install -y espeak-ng)")
+        if not audio.can_speak(SPOKEN_UTTERANCE):
+            pytest.skip(f"cannot say {SPOKEN_UTTERANCE!r}: no espeak-ng and no "
+                        f"committed fixture")
 
-        server = StubAudioServer([audio.spoken(SPOKEN_UTTERANCE)], host="0.0.0.0").start()
+        server = StubAudioServer([audio.speech_for(SPOKEN_UTTERANCE)], host="0.0.0.0").start()
         try:
             runner = split(
                 CSPLIT_AUDIO,

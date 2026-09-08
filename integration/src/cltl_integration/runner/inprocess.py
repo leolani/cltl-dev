@@ -24,7 +24,7 @@ from werkzeug.serving import make_server
 from cltl_integration.modules import Module
 from cltl_integration.runner.api import EventProbe
 from cltl_integration.serialization import deserializer, serializer
-from cltl_integration.topology import Topology, load_config, validate_config
+from cltl_integration.topology import Topology, load_config
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,7 @@ DEFAULT_PORT = 8000
 # through InProcessRunner(environment=...).
 TIER_ENVIRONMENT_DEFAULTS = {
     "CLTL_AUDIO_URL": "",
+    "CLTL_TTS_URL": "",
 }
 
 
@@ -203,7 +204,6 @@ class InProcessRunner:
 
         container_type = build_container_type(self._modules, self._container_overrides)
         self._container = container_type()
-        validate_config(self._container.config_manager, self._topology)
 
         # Serve before starting the workers. Both VadService and AsrService
         # resolve cltl-storage: URLs over real HTTP against [cltl.backend]

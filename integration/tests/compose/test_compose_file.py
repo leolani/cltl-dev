@@ -111,6 +111,11 @@ class TestSingleStackDefaults:
             # the base does not end in one.
             assert service["environment"]["CLTL_STORAGE_URL"] == \
                 "http://backend:8000/storage/", key
+            # The two stubs that live outside the compose network. Declared even
+            # when empty: EnvInterpolation warns on every unexpanded $VAR, and a
+            # log full of expected warnings is a log nobody reads.
+            assert service["environment"]["CLTL_AUDIO_URL"] == "", key
+            assert service["environment"]["CLTL_TTS_URL"] == "", key
 
     def test_the_backend_runs_the_full_container_by_default(self, default_config):
         assert default_config["services"]["backend"]["command"] == ["python", "src/main.py"]

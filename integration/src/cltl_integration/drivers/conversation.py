@@ -55,12 +55,24 @@ class Conversation:
         return self
 
     def confirm(self) -> "Conversation":
-        """Accept the greeting and wait for the handover to Eliza."""
+        """Accept the greeting in the chat UI and wait for the handover."""
         self.client.send(self.chat_id, CONFIRMATION)
+
+        return self.await_handover()
+
+    def await_handover(self, timeout: float = None) -> "Conversation":
+        """Wait for the BDI loop to hand the conversation to Eliza.
+
+        Separate from :meth:`confirm` because the acceptance does not have to be
+        typed. ``InitService`` matches an affirmative on ``text_in`` whatever put
+        it there, so a spoken "yes" transcribed by cltl-asr takes the same two
+        steps — see tests/compose/test_spoken_consent.py.
+        """
+        wait = {} if timeout is None else {"timeout": timeout}
         self.runner.probe.await_event(
-            DESIRE_TOPIC, lambda event: is_desire(event, "initialized"))
+            DESIRE_TOPIC, lambda event: is_desire(event, "initialized"), **wait)
         self.runner.probe.await_event(
-            INTENTION_TOPIC, lambda event: is_intention(event, "eliza"))
+            INTENTION_TOPIC, lambda event: is_intention(event, "eliza"), **wait)
 
         return self
 

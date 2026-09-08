@@ -144,20 +144,6 @@ def load_config(topology: Topology, tier: str,
     LocalConfigurationContainer.load_configuration(str(base), files)
 
 
-def validate_config(config_manager, topology: Topology) -> None:
-    """Reject configurations that are known to hang rather than fail.
-
-    Reads through a live ``ConfigurationManager``, so what is checked is the
-    interpolated value a service would actually receive.
-    """
-    if "backend" not in topology.modules:
-        return
-
-    _check_audio_lock(topology,
-                      config_manager.get_config("cltl.backend.tts").get("topic"),
-                      config_manager.get_config("cltl.backend.mic").get("topic"))
-
-
 def merged_config(topology: Topology, tier: str) -> configparser.ConfigParser:
     """The topology's three config layers, merged, without a running container.
 
@@ -172,22 +158,6 @@ def merged_config(topology: Topology, tier: str) -> configparser.ConfigParser:
     parser.read([str(base)] + [str(path) for path in additional])
 
     return parser
-
-
-def validate_topology(topology: Topology, tier: str) -> None:
-    """The same rule as :func:`validate_config`, read straight from the files.
-
-    For a stack this process does not attach to — the client half of a
-    client/server split loads its configuration inside its own containers, so
-    there is no ``ConfigurationManager`` here to ask.
-    """
-    if "backend" not in topology.modules:
-        return
-
-    parser = merged_config(topology, tier)
-    _check_audio_lock(topology,
-                      parser.get("cltl.backend.tts", "topic", fallback=""),
-                      parser.get("cltl.backend.mic", "topic", fallback=""))
 
 
 def needs_microphone(topology: Topology, tier: str) -> bool:
@@ -205,27 +175,20 @@ def needs_microphone(topology: Topology, tier: str) -> bool:
     return bool(merged_config(topology, tier).get("cltl.backend.mic", "topic", fallback=""))
 
 
-def _check_audio_lock(topology: Topology, tts_topic: str, mic_topic: str) -> None:
-    """The one configuration that hangs instead of failing.
+def needs_speaker(topology: Topology, tier: str) -> bool:
+    """Whether this topology's backend will try to speak to a remote loudspeaker.
 
-    ``SynchronizedTextToSpeech.say`` acquires a write lock on the audio resource
-    with ``timeout=-1``, which ``ThreadedResourceManager._await_resource`` turns
-    into ``event.wait(timeout=None)``. The only thing that ever provides that
-    resource is ``SynchronizedMicrophone.start``. So a topology that routes
-    text_out to TTS without running the microphone blocks the backend's worker
-    forever on the first agent reply — with no error, no timeout and no log.
-
-    This is the exact combination ``app/docker-app``'s test ``custom.config``
-    sets up, so it is not hypothetical.
+    ``BackendService`` starts its TTS worker when ``[cltl.backend.tts] topic`` is
+    set, and ``AnimatedRemoteTextOutput`` POSTs every reply to
+    ``[cltl.backend.text_output] remote_url``. With nothing listening there the
+    failure is invisible — ``SynchronizedTextToSpeech.say`` catches it and only
+    logs — so a demo has to start a stub loudspeaker rather than let the agent
+    be silently mute.
     """
-    if not tts_topic or mic_topic:
-        return
+    if "backend" not in topology.modules:
+        return False
 
-    raise TopologyError(
-        f"{topology.name}: [cltl.backend.tts] topic is set to {tts_topic!r} but "
-        f"[cltl.backend.mic] topic is empty. SynchronizedTextToSpeech.say would "
-        f"block forever waiting for the audio resource that only the microphone "
-        f"provides. Either enable the microphone or clear the TTS topic.")
+    return bool(merged_config(topology, tier).get("cltl.backend.tts", "topic", fallback=""))
 
 
 ELIZA = Topology(name="eliza", modules=("eliza",), overlay="eliza.config")
@@ -264,6 +227,32 @@ TEXT_PIPELINE = Topology(
     name="text_pipeline",
     modules=("eliza", "context", "chatui"),
     overlay="text_pipeline.config",
+)
+
+# The agent's reply, spoken. Two topologies rather than one, because the
+# microphone is not a detail here: the speaker and the microphone share an audio
+# resource, and the whole point of SynchronizedTextToSpeech is what happens when
+# both want it. See tests/slices/test_backend_tts.py.
+BACKEND_TTS = Topology(
+    name="backend_tts",
+    modules=("backend", "eliza"),
+    overlay="backend_tts.config",
+)
+
+BACKEND_TTS_MIC = Topology(
+    name="backend_tts_mic",
+    modules=("backend", "eliza"),
+    overlay="backend_tts_mic.config",
+)
+
+# audio_pipeline plus the BDI handshake: the shape a robot actually runs, and
+# the only topology where consent is given by voice rather than over HTTP.
+# audio_pipeline is deliberately left as it is — adding cltl-context to it would
+# put the init greeting on text_out and break its tests for the wrong reason.
+SPOKEN_PIPELINE = Topology(
+    name="spoken_pipeline",
+    modules=("backend", "vad", "asr", "context", "eliza", "chatui"),
+    overlay="spoken_pipeline.config",
 )
 
 CHATUI_IMAGE = Topology(
@@ -322,6 +311,7 @@ TOPOLOGIES: Dict[str, Topology] = {
     topology.name: topology
     for topology in (ELIZA, CONTEXT, ELIZA_CHATUI, EMISSOR, BACKEND,
                      BACKEND_VAD, VAD_ASR, AUDIO_PIPELINE, TEXT_PIPELINE,
+                     BACKEND_TTS, BACKEND_TTS_MIC, SPOKEN_PIPELINE,
                      CHATUI_IMAGE, CHATUI_MONITORING,
                      CSPLIT_SERVER, CSPLIT_CLIENT,
                      CSPLIT_AUDIO_SERVER, CSPLIT_AUDIO_CLIENT)

@@ -16,7 +16,9 @@ still fails, because a slice test supplies its own stimulus and this does not.
 Offline speech, deliberately. The prior art in ``app/docker-app`` synthesises
 utterances with gTTS, so its audio tests need the network, take seconds per
 utterance and are never quite the same twice. espeak-ng is installed from apt,
-produces identical samples every run, and Whisper transcribes it verbatim.
+produces identical samples every run, and Whisper transcribes it verbatim. Where
+it is missing, ``speech_for`` reads the committed rendering of the same phrase
+from ``fixtures/speech/`` rather than skipping the test.
 """
 import pytest
 
@@ -24,6 +26,7 @@ from cltl_integration.drivers import audio
 from cltl_integration.drivers.audio import StubAudioServer
 from cltl_integration.drivers.chat import ChatClient
 from cltl_integration.drivers.scenario import start_scenario
+from cltl_integration.fixtures import SPOKEN_COMPLAINT
 from cltl_integration.topology import AUDIO_PIPELINE
 
 pytestmark = [pytest.mark.compose, pytest.mark.slow]
@@ -34,7 +37,7 @@ TEXT_IN = "cltl.topic.text_in"
 TEXT_OUT = "cltl.topic.text_out"
 SCENARIO_TOPIC = "cltl.topic.scenario"
 
-UTTERANCE = "Hello, I feel very anxious today"
+UTTERANCE = SPOKEN_COMPLAINT
 
 # Recording is paced at real time, Whisper loads a 139 MB model on first use and
 # transcribes on CPU. None of that is a hang.
@@ -43,13 +46,13 @@ PIPELINE_TIMEOUT = 240.0
 
 @pytest.fixture
 def spoken_pipeline(compose):
-    if not audio.speech_available():
-        pytest.skip("espeak-ng is not installed (sudo apt-get install -y espeak-ng)")
+    if not audio.can_speak(UTTERANCE):
+        pytest.skip(f"cannot say {UTTERANCE!r}: no espeak-ng and no committed fixture")
 
     servers = []
 
     def _start(text: str = UTTERANCE):
-        server = StubAudioServer([audio.spoken(text)], host="0.0.0.0").start()
+        server = StubAudioServer([audio.speech_for(text)], host="0.0.0.0").start()
         servers.append(server)
         runner = compose(
             AUDIO_PIPELINE,

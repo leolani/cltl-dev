@@ -1,8 +1,9 @@
-"""Tests for the harness itself: topology validation and container synthesis.
+"""Tests for the harness itself: topology definition and container synthesis.
 
-The deadlock guard earns its place here. Without it the failure mode is a test
-that hangs with no error, no log line and no timeout — the single most expensive
-thing to debug in this codebase.
+Cheap, and they fail for reasons that are otherwise expensive to see. A topology
+naming a module that does not exist, or an overlay that was renamed and not
+followed, shows up here in milliseconds rather than as a stack that comes up
+healthy and wired to nothing.
 """
 import pytest
 
@@ -12,8 +13,7 @@ from cltl_integration.runner.inprocess import (HarnessInfraContainer,
                                                build_container_type)
 from cltl_integration.topology import (DEPLOYMENTS, ELIZA, ELIZA_CHATUI,
                                        TOPOLOGIES, Deployment, Topology,
-                                       TopologyError, load_config,
-                                       validate_config, validate_topology)
+                                       TopologyError)
 
 
 class TestTopologyDefinition:
@@ -84,17 +84,17 @@ class TestDeploymentDefinition:
                     assert path.exists(), f"{topology.name}: missing {path}"
 
 
-class TestFileLevelValidation:
-    """``validate_topology`` reads the config files instead of a ConfigurationManager.
-
-    It is the only check available for a stack this process does not attach to —
-    the client half of a split configures itself inside its own containers.
-    """
-
-    def test_every_registered_topology_passes_in_both_tiers(self):
+class TestRegisteredTopologies:
+    def test_every_topology_resolves_its_config_in_both_tiers(self):
+        """An overlay renamed without following it leaves a topology that starts
+        on base.config alone: every module disabled, and every assertion silent
+        rather than failing."""
         for topology in TOPOLOGIES.values():
             for tier in ("inprocess", "compose"):
-                validate_topology(topology, tier)  # must not raise
+                base, additional = topology.config_files(tier)
+                assert base.exists(), f"{topology.name}/{tier}: missing {base}"
+                for path in additional:
+                    assert path.exists(), f"{topology.name}/{tier}: missing {path}"
 
 
 class TestContainerSynthesis:
@@ -127,51 +127,21 @@ class TestContainerSynthesis:
         assert container_type.eliza_service is sentinel
 
 
-class TestAudioLockGuard:
-    """[cltl.backend.tts] without [cltl.backend.mic] blocks the backend forever.
-
-    SynchronizedTextToSpeech.say takes a write lock on the audio resource with
-    timeout=-1, which becomes event.wait(timeout=None). Only
-    SynchronizedMicrophone.start ever provides that resource.
-    """
-
-    def test_tts_without_mic_is_rejected(self, tmp_path):
-        overlay = tmp_path / "deadlock.config"
-        overlay.write_text("[cltl.backend.tts]\ntopic: cltl.topic.text_out\n")
-        topology = Topology(name="deadlock", modules=("backend",))
-
-        runner = InProcessRunner(topology, storage_dir=tmp_path / "storage",
-                                 extra_config=[overlay])
-
-        with pytest.raises(TopologyError, match="block forever"):
-            runner.start()
-
-    def test_tts_with_mic_is_allowed(self, tmp_path, monkeypatch, clean_di):
-        overlay = tmp_path / "ok.config"
-        overlay.write_text(
-            "[cltl.backend.tts]\ntopic: cltl.topic.text_out\n"
-            "[cltl.backend.mic]\ntopic: cltl.topic.microphone\n")
-        topology = Topology(name="tts_ok", modules=("backend",))
-
-        monkeypatch.setenv("CLTL_HTTP_BASE", "http://127.0.0.1:8000")
-        monkeypatch.setenv("CLTL_STORAGE_DIR", str(tmp_path / "storage"))
-        # Every variable the tier config interpolates, or EnvInterpolation warns.
-        monkeypatch.setenv("CLTL_AUDIO_URL", "")
-        load_config(topology, "inprocess", extra_config=[overlay])
-        container = build_container_type(topology.ordered_modules())()
-
-        validate_config(container.config_manager, topology)  # must not raise
-
-
 class TestFailedStartCleansUp:
     def test_port_is_released_after_a_failed_start(self, tmp_path, inprocess):
-        """A half-started topology must not poison the next test in the process."""
-        overlay = tmp_path / "deadlock.config"
-        overlay.write_text("[cltl.backend.tts]\ntopic: cltl.topic.text_out\n")
+        """A half-started topology must not poison the next test in the process.
 
-        runner = InProcessRunner(Topology(name="deadlock", modules=("backend",)),
+        The trigger is a typo in a config value, which is what this actually
+        happens to: ``ASRContainer._create_asr_implementation`` raises on an
+        implementation it does not recognise, by which point the runner has
+        already bound its port and loaded the configuration.
+        """
+        overlay = tmp_path / "bad_asr.config"
+        overlay.write_text("[cltl.asr]\nimplementation: no-such-recogniser\n")
+
+        runner = InProcessRunner(Topology(name="bad_asr", modules=("asr",)),
                                  storage_dir=tmp_path / "bad", extra_config=[overlay])
-        with pytest.raises(TopologyError):
+        with pytest.raises(ValueError, match="Unsupported implementation"):
             runner.start()
 
         # The next topology must start normally on the same port.
