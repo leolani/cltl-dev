@@ -1,12 +1,12 @@
 ---
 name: submodule-git
-description: Commit work across the CLTL submodules and record the resulting submodule pointers in the parent repo, ignoring build-generated VERSION churn. Use when asked to commit, stage, or check in changes anywhere in this meta-repo, or to survey what is dirty across submodules. Commits only — never pushes.
+description: List what changed in each CLTL submodule and the parent, commit that work, and record the resulting submodule pointers, ignoring build-generated VERSION churn. Use when asked what changed or which submodules are dirty, for an overview or diff summary across the meta-repo, or to commit, stage, or check in changes anywhere in it. Commits only — never pushes.
 ---
 
 Git skill for the CLTL meta-repo: commit inside submodules, then record the
 resulting pointers in the parent.
 
-Usage: `/submodule-git [status | branches | commit [<module> ...] | pointers | reset-version [<module>]]`
+Usage: `/submodule-git [changes [<module> ...] | status | branches | commit [<module> ...] | pointers | reset-version [<module>]]`
 
 ## This skill never pushes
 
@@ -25,10 +25,11 @@ submodules have an `origin` on github.com/leolani.
 - 12 gitlinks in `.gitmodules`: `emissor`, `util`, `cltl-combot`,
   `cltl-emissor-data`, `cltl-chat-ui`, `app/util`, `cltl-eliza`, `cltl-backend`,
   `cltl-asr`, `cltl-vad`, `cltl-context`, `cltl-monitoring`.
-- **`app/` and `cltl-requirements/` are NOT submodules.** They are ordinary
-  tracked directories in the parent, so changes there — including `app/VERSION`
-  churn — are parent-repo changes. `make git-reset-version` uses
-  `git submodule foreach` and therefore never touches `app/VERSION`.
+- **`app/`, `cltl-requirements/` and `integration/` are NOT submodules.** They
+  are components in the root makefile's `project_components` but ordinary tracked
+  directories in the parent, so changes there — including `app/VERSION` and
+  `integration/VERSION` churn — are parent-repo changes. `make git-reset-version`
+  uses `git submodule foreach` and therefore never touches either.
 - `util` and `app/util` are both the `leolani/cltl-build` repo. Only
   `make update-build` should move them.
 
@@ -74,7 +75,110 @@ git -C <sub> add -u -- . ':(exclude)VERSION'
 
 ## Dispatch on `$ARGUMENTS`
 
-### No argument, or `status` — survey, report, propose. No writes.
+### No argument, or `changes [<module> ...]` — what changed, and where
+
+The overview to reach for first: one line per component saying whether it holds
+real work, followed by the files under it. Read-only, commits nothing. With
+module names (`cltl-asr`, `app`, `integration`, …) only those are reported.
+
+```bash
+cd /workspaces/cltl-dev
+TARGETS="$*"                        # empty = every component
+want() { [ -z "$TARGETS" ] && return 0; case " $TARGETS " in *" $1 "*) return 0;; esac; return 1; }
+
+version_kind() {          # $1 = repo dir, $2 = VERSION path inside it
+  local head work
+  head=$(git -C "$1" show "HEAD:$2" 2>/dev/null | tr -d '[:space:]')
+  work=$(cat "$1/$2" 2>/dev/null | tr -d '[:space:]')
+  [ -z "$head$work" ] && { echo absent; return; }
+  [ "$head" = "$work" ] && { echo clean; return; }
+  [ "${head%%+*}" = "${work%%+*}" ] && { echo churn; return; }
+  echo "BUMP $head -> $work"
+}
+
+ptr_flag() {              # $1 = exact submodule path; prints +/-/U only when the pointer moved
+  git submodule status | awk -v p="$1" 'substr($0,2) ~ "^[0-9a-f]+ "p" " { f=substr($0,1,1); if (f != " ") print f }'
+}
+
+real=(); untr=(); churn=(); clean=(); moved=()
+report() {                # $1 label, $2 repo dir, $3 VERSION path, $4 ignore-submodules mode, rest: pathspec
+  local label=$1 dir=$2 vp=$3 ign=$4; shift 4
+  want "$label" || return 0
+  local v st tracked untracked flag note
+  v=$(version_kind "$dir" "$vp")
+  st=$(git -C "$dir" status --porcelain --ignore-submodules="$ign" -- "$@")
+  tracked=$(grep -v '^??' <<<"$st"); untracked=$(grep '^??' <<<"$st")
+  flag=$(ptr_flag "$label"); note=""
+  [ -n "$flag" ] && { note=" [pointer $flag]"; moved+=("$label"); }
+  case "$v" in BUMP*) note="$note [VERSION $v]";; esac
+
+  if   [ -n "$tracked" ];       then echo "$label: REAL$note";               real+=("$label")
+  elif [ -n "$untracked" ];     then echo "$label: untracked only$note";     untr+=("$label")
+  elif [ "${v#BUMP}" != "$v" ]; then echo "$label: VERSION bump only$note";  real+=("$label")
+  elif [ "$v" = churn ];        then echo "$label: version churn only$note"; churn+=("$label")
+  else                               echo "$label: clean$note";              clean+=("$label")
+  fi
+  if [ -n "$st" ]; then
+    git -C "$dir" -c advice.statusHints=false status --ignore-submodules="$ign" -- "$@" \
+      | grep -Ev '^(On branch|Your branch|nothing (to commit|added to commit)|no changes added to commit)' \
+      | sed -e '/^$/d' -e 's/^/    /'
+  fi
+  return 0
+}
+
+echo '=== submodules ==='
+for sub in $(git config -f .gitmodules --get-regexp '^submodule\..*\.path$' | awk '{print $2}' | sort); do
+  report "$sub" "$sub" VERSION dirty . ':(exclude)VERSION'
+done
+
+echo
+echo '=== tracked directly in the parent (NOT submodules) ==='
+for d in app cltl-requirements integration; do
+  report "$d" . "$d/VERSION" all "$d" ":(exclude)$d/VERSION"
+done
+report '(root)' . VERSION all . ':(exclude)app' ':(exclude)cltl-requirements' ':(exclude)integration' ':(exclude)VERSION'
+
+echo
+echo "real work     : ${real[*]:-none}"
+echo "untracked only: ${untr[*]:-none}"
+echo "version churn : ${churn[*]:-none}"
+echo "clean         : ${clean[*]:-none}"
+echo "pointer moved : ${moved[*]:-none}"
+```
+
+| Line | Meaning | Consequence |
+|---|---|---|
+| `REAL` | tracked modifications other than `VERSION` | `commit` stages exactly these |
+| `VERSION bump only` | `VERSION` changed in its base part — a hand-edited release | real work; confirm before committing |
+| `untracked only` | nothing tracked changed | `add -u` stages **nothing** here; the user must name files |
+| `version churn only` | `VERSION` restamped by a build | nothing to commit — see [The VERSION rule](#the-version-rule) |
+| `clean` | no changes | — |
+| `[pointer +]` | submodule HEAD ≠ the commit the parent records | needs a `pointers` commit even when otherwise clean |
+| `[VERSION BUMP a -> b]` | annotation on any line whose `VERSION` is not churn | never let this be reverted |
+
+Lead the report with the `real work` summary line — it is the answer to "what is
+there to commit". Then name the files per component, and say explicitly that the
+`version churn only` ones need nothing.
+
+Why the snippet is shaped this way:
+
+- `--ignore-submodules=dirty` **inside** a submodule: a moved nested `util`
+  pointer is a real change and must show, while `util`'s own working-tree dirt is
+  not this submodule's business.
+- `--ignore-submodules=all` at **parent** level: each submodule already has its
+  own line, and a `':(exclude)*/'` pathspec cannot do this job (see Notes).
+- Untracked directories collapse to one entry with a trailing `/` (`tests/`
+  under "Untracked files:"). Expand with `git -C <sub> status -uall` when the
+  contents matter.
+- The parent loop is a fixed list because `app`, `cltl-requirements` and
+  `integration` are the root makefile's non-submodule components; `(root)` is
+  everything else in the parent.
+
+### `status` — full survey: branches, staged content, pointers
+
+`changes` answers "what is modified"; this answers "is anything about to go
+wrong" — declared vs. checked-out branch, pre-existing staged content, detached
+HEADs.
 
 ```bash
 cd /workspaces/cltl-dev
@@ -101,15 +205,16 @@ git status --porcelain --ignore-submodules=all
 
 Report in this order, then **stop** — this branch commits nothing:
 
-1. Submodules with real work (`modified > 0`), naming the files.
-2. Untracked files — list every one. These are often agent debris (stray
-   `CLAUDE.md`, scratch scripts) and are never committed by default.
-3. Any `VERSION=INTENTIONAL` — show old → new and flag it.
-4. Any `DETACHED` HEAD, or `branch` differing from `decl`.
-5. Submodules whose pointer is already ahead (`+` in `git submodule status`) —
+1. Anything that would block or corrupt a commit: `DETACHED` HEAD, `branch`
+   differing from `decl`, or `staged > 0` (someone staged deliberately).
+2. Any `VERSION=INTENTIONAL` — show old → new and flag it.
+3. Submodules whose pointer is already ahead (`+` in `git submodule status`) —
    these need a parent commit even with no new work.
-6. Parent-repo dirt outside submodules, so it is clear a `pointers` commit will
+4. Parent-repo dirt outside submodules, so it is clear a `pointers` commit will
    **not** include it.
+
+Counts only. For the per-file breakdown run `changes`, which is the better
+answer to "what did I change"; do not expand this loop to list files.
 
 ### `branches` — branch drift report
 
@@ -121,8 +226,9 @@ would abandon them.
 
 ### `commit [<module> ...]` — commit real work inside submodules
 
-Named modules only, or with no names, every submodule with `modified > 0`.
-Never all 12 blindly.
+Named modules only, or with no names, every submodule that `changes` classifies
+`REAL` or `VERSION bump only`. Never all 12 blindly, and never one classified
+`untracked only` — `add -u` would stage nothing and the commit would be empty.
 
 Per submodule, in order:
 

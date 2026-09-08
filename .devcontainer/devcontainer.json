@@ -8,6 +8,20 @@
     "ghcr.io/devcontainers/features/node:1": {
       "version": "lts"
     },
+    // Needed for the integration harness' tier 2 (`make -C integration
+    // test-compose`) and for `make -C cltl-requirements install`, which builds
+    // the ghcr.io/leolani/cltl-base images.
+    //
+    // docker-IN-docker rather than docker-outside-of-docker: this workspace is
+    // bind-mounted from the host (/workspaces/cltl-dev <- ~/automatic/vu/
+    // workspaces/cltl-dev), so a shared host daemon would resolve compose bind
+    // mounts like ./config against host paths that do not exist there, and
+    // silently mount empty directories instead of failing.
+    //
+    // The feature declares "privileged": true, which the host must allow.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": false
+    }
     "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
   },
 
