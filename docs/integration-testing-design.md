@@ -1,6 +1,6 @@
 # Design: `integration/` — an integration-test component for the Leolani platform
 
-Status: phases 1-5 implemented · Date: 2026-09-04
+Status: phases 1-5 implemented; prior art reviewed and ported · Date: 2026-09-08
 
 ## Context
 
@@ -110,8 +110,10 @@ A Topology is the shared artefact: the same object is consumed by an automatic
 test, by a container test, and by the demo launcher. Adding a scenario means
 adding one Topology, not three parallel definitions.
 
-`Topology.__post_init__` must **validate**, not just record. The first rule
-(verified, and a guaranteed hang otherwise) is the audio-lock rule below.
+`Topology.__post_init__` **validates** what it can decide from the declaration
+alone: an unknown module, a duplicate, a `Deployment` whose halves overlap. It
+does not validate configuration — the one rule that was written for it, the
+audio-lock rule, turned out not to be a rule at all (see the risk table).
 
 ### 3. Runners — two realisations, one control surface
 
@@ -682,11 +684,95 @@ Phases 1–3 are the "automatic (required)" tier and are useful on their own.
 
 ---
 
+## Phase 6 — the prior art, reviewed
+
+Before retiring `app/docker-app/tests/`, both harnesses there were read in full
+and mined. There were two, not one: the documented compose suite, and
+`tests/manual/diagnostics/` — a container that joins an **already running**
+stack's network and runs four per-component probes, reporting through its exit
+code. Nothing references it: no makefile target, no README, no commit since it
+was added.
+
+**Already present here, usually improved.** The ChatClient (ported verbatim into
+`drivers/chat.py`, then given an injected base URL instead of a hardcoded
+`localhost:8003`); the stub microphone (`drivers/audio.py` — same 16 kHz/mono/480
+framing and the same `audio/L16; rate=…; channels=…; frame_size=…` content type
+`ClientAudioSource` parses strictly, same VAD-shaped silence padding, but
+deterministic and offline instead of a gTTS call per utterance, and paced at real
+time so an exhausted stub idles instead of spinning); readiness on ChatUI's
+`scenario_id` rather than a health endpoint, with the same reasoning about
+`MemoryChats` minting an `id` eagerly; config-by-bind-mount over `custom.config`;
+`_raise_for_status` carrying the response body; per-run storage redirection;
+`docker compose logs` captured on teardown; and the `container_id == audio_id`
+correlation assertion, which `VadTest` had once and this suite has in four
+places.
+
+**Obsolete rather than missing.** `_compose_up`'s down-first plus five retries
+defended against "port is already allocated" between fixed host ports, and the
+one-pytest-process-per-module rule in `app/makefile` defended against the same
+collision. Unique project names and ephemeral ports remove the failure, so there
+is nothing left to retry around.
+
+**Three real gaps, now closed.**
+
+1. **Consent given by voice** (`tests/compose/test_spoken_consent.py`, topology
+   `spoken_pipeline`). The old audio test scripted the microphone with
+   `("Hello", "yes")` and drove the BDI handshake through it. Nothing here did:
+   `audio_pipeline` has no cltl-context and the csplit-audio tests stop at the
+   transcript. What it proves is narrow and not otherwise reachable — that
+   `InitService`'s `"yes" in text.lower()` is satisfied by *Whisper's* output,
+   which is capitalised, punctuated and occasionally not what was said.
+2. **The reply, spoken** (`tests/slices/test_backend_tts.py`, topologies
+   `backend_tts` and `backend_tts_mic`, driver `drivers/tts.py`).
+   `[cltl.backend.tts]` was never run by anything — only validated against. It
+   needs no sound device: with `remote_type` neither `console` nor `sound`,
+   `AnimatedRemoteTextOutput` POSTs the reply to `$CLTL_TTS_URL/text`. It matters
+   because `SynchronizedTextToSpeech.say` wraps its whole body in a bare
+   `except:` that only logs, so a backend that cannot speak keeps publishing,
+   keeps recording, keeps answering in the chat UI, and is simply silent. This is
+   also what settled the withdrawn audio-lock risk above.
+3. **Speech without an apt package** (`fixtures/speech/`, `fixtures.py`,
+   `make speech-fixtures`). The diagnostics harness committed its PCM payload;
+   this component gated its slowest and most valuable tests on `espeak-ng` being
+   installed. Every phrase the suite speaks now lives in one list with espeak-ng's
+   rendering committed beside it, and `audio.speech_for` prefers the binary and
+   falls back to the file. `--say` at the command line still needs espeak-ng,
+   which is the one place a phrase has no committed rendering.
+
+### Retiring the prior art
+
+Not done here, and deliberately a separate decision. What it involves, recorded
+now while the review is fresh:
+
+- `app/docker-app/tests/integration/` — 26 tracked files. The only thing that
+  references them is `app/makefile:43-69`, five `test-integration*` targets. On
+  disk they also carry ~347 MB of untracked run residue under `storage/`,
+  including a 66 MB `storage/test.log` that every container appends to across
+  every run (`logging.config` opens it in append mode on a shared mount), plus
+  3.1 MB and 2.9 MB under the two csplit directories. `storage/clean.sh` exists
+  to clear this and is invoked by nothing.
+- `app/docker-app/tests/manual/` — 18 tracked files, referenced by nothing at
+  all: no makefile target, no README, no commit since it was added. Includes
+  248 KB of committed binary in two `.raw` payloads which are byte-identical to
+  each other, because `generate_audio.py` writes the same buffer to both and
+  says so in a comment.
+
+Both are independent of `integration/` and can stay indefinitely; they are the
+only thing that still exercises the `eliza-app` image itself, which this
+component composes modules instead of.
+
+**Deliberately not ported: the attach-to-a-running-stack mode.** It is the
+diagnostics harness's whole reason for existing and the one capability this
+component lacks — every runner here *owns* the stack it tests. It would fit as a
+third `Runner` needing only an AMQP URL and a module→URL map. Left until
+`app/docker-client/` and `app/docker-eliza-server/` settle, since those are what
+would be probed.
+
 ## Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
-| **TTS audio-lock deadlock.** `SynchronizedTextToSpeech.say` takes `get_write_lock(AUDIO_RESOURCE_NAME)` with `timeout=-1` (`sync_tts.py:68`) → `_await_resource` → `event.wait(timeout=None)` → blocks forever. The only provider is `SynchronizedMicrophone.start` (`sync_microphone.py:45`). So any topology with backend-TTS enabled (`[cltl.backend.tts] topic: cltl.topic.text_out`) but the mic disabled hangs on the first reply — exactly what the existing test `custom.config` configures | `Topology.__post_init__` rejects it: backend-TTS requires the mic, or `[cltl.backend.tts] topic:` must be blank. Encode as validation, not tribal knowledge |
+| ~~**TTS audio-lock deadlock.**~~ **Withdrawn — this risk does not exist.** The reasoning was: `SynchronizedTextToSpeech.say` takes `get_write_lock(AUDIO_RESOURCE_NAME)` with `timeout=-1` (`sync_tts.py:68`), the only provider is `SynchronizedMicrophone.start` (`sync_microphone.py:45`), so backend-TTS without the microphone must block forever. The premise is right and the conclusion does not follow: `BackendService.start` calls `Backend.start` unconditionally (`cltl_service/backend/backend.py`), which starts the microphone **object** regardless of `[cltl.backend.mic] topic`. The topic gates the recording thread, not the resource | Measured both ways in `tests/slices/test_backend_tts.py`: with the microphone off the reply is spoken in 0.1 s, and with it recording the mic mutes itself and the reply still arrives. The guard, `validate_config` and `validate_topology` are removed; that test is now where the finding lives |
 | **Any failure inside `TopicWorker.run()` before `_started.set()` hangs `container.start()` forever.** All 12 call sites do `topic_worker.start().wait()` with no timeout. Realistic trigger: `event_bus.subscribe` against an unreachable broker | Global `timeout` + `--timeout-method=thread` in `pytest.ini`; runner `start()` takes an explicit timeout |
 | `DIContainer._singletons` is class-level and process-wide | `reset_process_state()` as specified above; call `_reset()` on `DIContainer`, never a subclass |
 | `@singleton` returns `False` (not `None`) for absent optional services | Guard with truthiness, never `is not None` |
@@ -712,10 +798,10 @@ make -C integration test                         # green
 #   then: add a failing test and confirm the target turns RED (regression guard
 #   against the `;`-vs-`&&` bug that makes every other component's tests green)
 
-# Phases 2-3 (tier 1) — 84 passed, 4 xfailed, ~3 min
+# Phases 2-3 (tier 1) — 110 passed, 4 xfailed, ~4 min
 make -C integration test
 
-# Phase 4 (tier 2) — 37 passed, 1 xfailed, ~18 min (includes the client/server split)
+# Phase 4 (tier 2) — 40 passed, 1 xfailed, ~20 min (includes the client/server split)
 docker pull ghcr.io/leolani/cltl-base:latest     # published; components layer on it
 docker pull rabbitmq:3.12-management
 for c in cltl-backend cltl-chat-ui cltl-context cltl-eliza \
@@ -730,8 +816,16 @@ docker compose ls                                # no stacks left behind
 make -C integration demos                        # lists topologies and deployments
 make -C integration demo-text-pipeline           # prints URLs, chat UI reachable, clean Ctrl-C
 make -C integration demo-csplit DEMO_FLAGS='--tier compose'
-make -C integration test-manual                  # 3 tests, a person in the browser
+make -C integration test-manual                  # 4 tests, a person in the browser
 #   without a terminal they skip; `pytest -m manual` alone must never hang
+
+# Phase 6 — the ports from the prior art
+make -C integration speech-fixtures              # byte-reproducible: git diff is empty
+sudo mv /usr/bin/espeak-ng /usr/bin/espeak-ng.hidden
+make -C integration test-compose PYTEST_FLAGS="-q -k 'spoken_consent or SpokenConversation'"
+#   must PASS on the committed fixtures, not skip
+sudo mv /usr/bin/espeak-ng.hidden /usr/bin/espeak-ng
+make -C integration demo-backend_tts             # reports a stub loudspeaker URL
 
 # Regression: the existing app suite is untouched
 make -C app test-integration-text

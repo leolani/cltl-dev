@@ -158,11 +158,14 @@ the current source:
 
 ```bash
 make -C integration docker-images   # says what is missing and how to build it
-make -C integration test-compose    # ~18 min
+make -C integration test-compose    # ~20 min
 ```
 
-The spoken-conversation tests additionally need `espeak-ng` (`sudo apt-get
-install -y espeak-ng`); without it they skip.
+The spoken tests prefer `espeak-ng` (`sudo apt-get install -y espeak-ng`) and
+fall back to committed renderings of the same phrases in
+`integration/fixtures/speech/`, so they run either way. Add a phrase to
+`integration/src/cltl_integration/fixtures.py` and run `make -C integration
+speech-fixtures`; only `--say` at the command line needs the binary.
 
 ### Demos and manual tests
 
@@ -180,6 +183,17 @@ it opens a scenario itself (the `init` intention when cltl-context is present,
 `ScenarioStarted` otherwise) because the chat UI renders nothing without one.
 `manual`-marked tests are excluded from `test`, `test-compose` and `test-all`,
 and skip rather than hang when there is no terminal.
+
+The agent's **spoken** replies are covered too, without a sound device:
+`[cltl.backend.tts]` routed to an `AnimatedRemoteTextOutput` POSTs each reply to
+a stub HTTP loudspeaker (`tests/slices/test_backend_tts.py`). Worth knowing
+because `SynchronizedTextToSpeech.say` catches everything and only logs, so a
+backend that cannot speak still publishes, records and answers in the chat UI.
+
+`tests/compose/test_spoken_consent.py` is the only test where consent is given
+by voice: the stub microphone is scripted `("Hello", "yes")`, Whisper transcribes
+it, and `InitService` has to accept a real recogniser's output rather than a
+string the test wrote.
 
 Tier 2 also runs the **client/server split** (`tests/compose/test_csplit.py`):
 two compose projects on two networks, cltl-context and cltl-chat-ui on the
