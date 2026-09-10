@@ -29,7 +29,8 @@ from cltl_integration.drivers.audio import StubAudioServer
 from cltl_integration.drivers.tts import StubTextOutput
 from cltl_integration.drivers.bdi import publish_intention
 from cltl_integration.drivers.scenario import start_scenario
-from cltl_integration.runner.compose import ComposeError, ComposeRunner
+from cltl_integration.runner.compose import (BROKER_PASSWORD, BROKER_USER,
+                                             ComposeError, ComposeRunner)
 from cltl_integration.runner.inprocess import InProcessRunner
 from cltl_integration.runner.split import SplitRunner
 from cltl_integration.runner.tenants import TenantRunner
@@ -335,6 +336,7 @@ def report(scenario, runner, storage: Path, stub=None,
     if speaker is not None:
         lines.append(f"    {'speaker':9} {speaker.url} (stub loudspeaker; replies "
                      f"are logged as they are spoken)")
+    lines += _broker(runner)
     lines += ["", f"    storage  {storage}", ""]
     if closing:
         lines += [closing, ""]
@@ -366,6 +368,32 @@ def _mounts(scenario, runner, key: str):
                 for mount in _url(runner.tenant(tenant).url, f"   ({tenant})")]
 
     return _url(runner.url)
+
+
+def _broker(runner) -> List[str]:
+    """The broker's published ports, when this run has a broker at all.
+
+    Nothing else in this report says where they are, and a process outside the
+    topology — a notebook, a script, an image built after the deployment came
+    up — needs exactly this to join the bus. Ephemeral by design
+    (docker-compose.yml publishes no fixed ports, so a run cannot lose to
+    whatever else holds 5672), which is exactly why they have to be printed
+    rather than assumed.
+
+    Asked for, not computed: tier 1 has no broker at all (`SynchronousEventBus`
+    is the bus), and a split or multi-tenant deployment keeps its one broker on
+    the server half, so the address belongs to whichever runner actually holds
+    a `ComposeRunner`. `getattr` covers all three without importing
+    `SplitRunner`/`TenantRunner` here just to `isinstance` them.
+    """
+    source = runner if hasattr(runner, "amqp_url") else getattr(runner, "server", None)
+    if source is None:
+        return []
+
+    return ["",
+            f"    {'broker':9} {source.amqp_url}",
+            f"    {'':9} {source.management_url}   "
+            f"(RabbitMQ management, {BROKER_USER}/{BROKER_PASSWORD})"]
 
 
 def _wait() -> None:
