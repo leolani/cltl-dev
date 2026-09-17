@@ -21,7 +21,7 @@
     // The feature declares "privileged": true, which the host must allow.
     "ghcr.io/devcontainers/features/docker-in-docker:2": {
       "moby": false
-    }
+    },
     "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
   },
 
