@@ -231,14 +231,14 @@ class InProcessRunner:
         """Create the directories the tier config points the modules at.
 
         This is the deployment's job, not the application's, and the harness is
-        the deployment here. ``CachedAudioStorage.__init__`` looks like it takes
-        care of itself — it calls ``os.makedirs`` — but on
-        ``os.path.dirname(storage_path)``, so it creates the *parent* of the
-        directory it is about to write into. A fresh storage root therefore
-        fails every write with a bare "System error" from libsndfile, which
-        ``BackendService``'s recording thread catches, logs and retries forever.
-        See tests/slices/test_backend_storage.py; these names must stay in step
-        with config/tier-inprocess.config.
+        the deployment here. The storage classes now create their own directory
+        too (``CachedAudioStorage.__init__`` used to call ``os.makedirs`` on
+        ``os.path.dirname(storage_path)``, creating the *parent* of the
+        directory it writes into — see tests/slices/test_backend_storage.py),
+        so this is no longer load-bearing for audio and images. It is kept
+        because it also covers the paths no storage class owns, ``emissor`` and
+        the root itself. These names must stay in step with
+        config/tier-inprocess.config.
         """
         for name in ("", "audio", "image"):
             (self._storage_dir / name).mkdir(parents=True, exist_ok=True)

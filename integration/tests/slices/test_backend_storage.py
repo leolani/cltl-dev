@@ -7,13 +7,13 @@ and a silent one, because a range served slightly wrong still yields a
 plausible-looking transcript.
 
 The second class here is a regression test for a defect this harness turned up
-rather than a boundary between two modules; it is filed with them because the
-topologies work around it, and the workaround should disappear together with the
-xfail.
+rather than a boundary between two modules. It was an `xfail` until the storage
+classes were fixed to create their own directory; it is kept as a live test so
+that the fix cannot quietly regress behind the runners' own `mkdir`.
 """
 import numpy as np
 import pytest
-from cltl.backend.impl.cached_storage import CachedAudioStorage
+from cltl.backend.impl.cached_storage import CachedAudioStorage, CachedImageStorage
 from cltl.backend.source.client_source import ClientAudioSource
 
 from cltl_integration.drivers import audio
@@ -70,29 +70,29 @@ class TestStorageService:
 class TestFreshStorageRoot:
     """Storing into a directory that does not exist yet.
 
-    Not a two-module boundary, but the reason ``InProcessRunner`` pre-creates
-    the storage directories: without that, every topology with a microphone logs
-    a libsndfile "System error" per recording and persists nothing, while the
-    live pipeline carries on working because cltl-vad and cltl-asr read from the
-    in-memory cache rather than from disk. That combination — visibly fine,
-    quietly lossy — is what makes it worth pinning down.
+    Not a two-module boundary, but worth pinning at this level. Until
+    ``CachedAudioStorage.__init__`` was fixed it called
+    ``os.makedirs(os.path.dirname(self._storage_path))`` — creating the *parent*
+    of the directory it writes into rather than the directory itself — so every
+    topology with a microphone logged a libsndfile "System error" per recording
+    and persisted nothing, while the live pipeline carried on working because
+    cltl-vad and cltl-asr read from the in-memory cache rather than from disk.
+    That combination, visibly fine and quietly lossy, is what makes it worth a
+    test rather than a comment.
 
-    Reproduced directly against ``CachedAudioStorage`` rather than through a
-    topology, so that the runner's workaround cannot mask it.
+    Exercised directly against the storage classes rather than through a
+    topology, so that the runners' own `mkdir` cannot mask a regression.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="CachedAudioStorage.__init__ (cached_storage.py:44) calls "
-               "os.makedirs(os.path.dirname(self._storage_path)), creating the "
-               "PARENT of the directory it writes into rather than the directory "
-               "itself. CachedImageStorage repeats it at line 176. A deployment "
-               "that does not pre-create storage/audio therefore persists no "
-               "audio at all, and the harness creates it for that reason. "
-               "Fix: drop the os.path.dirname.")
     def test_storage_creates_its_own_directory(self, tmp_path):
         audio_storage = CachedAudioStorage(str(tmp_path / "audio"))
 
         audio_storage.store(AUDIO_ID, audio.frames(audio.speech()), audio.RATE)
 
         assert (tmp_path / "audio" / f"{AUDIO_ID}.wav").exists()
+
+    def test_image_storage_creates_its_own_directory(self, tmp_path):
+        """``CachedImageStorage`` repeated the same mistake, so pin it too."""
+        CachedImageStorage(str(tmp_path / "image"))
+
+        assert (tmp_path / "image").is_dir()
