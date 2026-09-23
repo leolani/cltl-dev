@@ -48,6 +48,14 @@ x-cltl-env: &cltl-env
   # undefined variable as the literal string — which KombuEventBus would take for a
   # tenant name and bind `cltl.topic.text_in.$CLTL_TENANT`, a queue nothing routes to.
   CLTL_TENANT: ${CLTL_TENANT:-}
+  # Where the *browser* reaches cltl-monitoring, for the chat UI's Monitoring
+  # tab. Unlike every other URL here this is not a compose-network name: the
+  # browser is not on this network, so it has to be the published host port,
+  # which is ephemeral and therefore unknown until after `up`. ComposeRunner
+  # discovers it and recreates the chat UI with this variable set; empty on the
+  # first pass, and empty for good in a topology with no monitoring module,
+  # which is what leaves the tab out.
+  CLTL_MONITORING_URL: ${CLTL_CONTAINER_MONITORING_URL:-}
 
 x-cltl-service: &cltl-service
   depends_on:

@@ -26,6 +26,7 @@ from typing import List, Optional, Sequence
 
 from cltl_integration.drivers import audio
 from cltl_integration.drivers.audio import StubAudioServer
+from cltl_integration.drivers.camera import StubImageServer
 from cltl_integration.drivers.tts import StubTextOutput
 from cltl_integration.drivers.bdi import publish_intention
 from cltl_integration.drivers.scenario import start_scenario
@@ -37,7 +38,8 @@ from cltl_integration.runner.tenants import TenantRunner
 from cltl_integration.topology import (DEPLOYMENTS, TENANT_DEPLOYMENTS,
                                        TOPOLOGIES, Deployment,
                                        TenantDeployment, Topology,
-                                       needs_microphone, needs_speaker)
+                                       needs_camera, needs_microphone,
+                                       needs_speaker)
 
 logger = logging.getLogger(__name__)
 
@@ -145,8 +147,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.storage is None and storage.exists():
         shutil.rmtree(storage)
 
-    with _microphone(scenario, args) as mic, _speaker(scenario, args) as speaker:
-        runner = _build(scenario, args, storage, mic, speaker)
+    with _microphone(scenario, args) as mic, _speaker(scenario, args) as speaker, \
+            _camera(scenario, args) as camera:
+        runner = _build(scenario, args, storage, mic, speaker, camera)
         print(f"Starting {scenario.name} ({args.tier})...", flush=True)
         try:
             # Every runner tears its own half-started self down before raising,
@@ -216,6 +219,25 @@ def _speaker(scenario, args):
     return StubTextOutput(host=host)
 
 
+def _camera(scenario, args):
+    """A stub camera, if anything in the scenario will go looking for one.
+
+    Same reasoning as :func:`_microphone`: ``[cltl.backend] server_image_url`` is
+    read when the backend's services are constructed, so the socket has to be
+    bound first. Serves one deterministic frame per capture — nothing downstream
+    of the backend cares what the pixels are, and a demo only needs the pipeline
+    to have something to carry.
+    """
+    topologies = _topologies(scenario)
+    if not any(needs_camera(topology, _tier_of(scenario, args))
+               for topology in topologies):
+        return _Nothing()
+
+    host = "0.0.0.0" if _tier_of(scenario, args) == "compose" else "127.0.0.1"
+
+    return StubImageServer(host=host)
+
+
 def _topologies(scenario) -> tuple:
     """The topologies a scenario is made of, whichever kind of scenario it is.
 
@@ -247,11 +269,12 @@ def _utterances(texts: Sequence[str]) -> List:
     return [audio.spoken(text) for text in texts]
 
 
-def _build(scenario, args, storage: Path, mic, speaker):
+def _build(scenario, args, storage: Path, mic, speaker, camera):
     def _remote(stub, key):
         return {} if stub is None else {key: f"http://host.docker.internal:{stub.port}"}
 
-    environment = {**_remote(mic, "CLTL_AUDIO_URL"), **_remote(speaker, "CLTL_TTS_URL")}
+    environment = {**_remote(mic, "CLTL_AUDIO_URL"), **_remote(speaker, "CLTL_TTS_URL"),
+                   **_remote(camera, "CLTL_IMAGE_URL")}
 
     if isinstance(scenario, Deployment):
         return SplitRunner(scenario, storage_dir=storage,
@@ -273,6 +296,8 @@ def _build(scenario, args, storage: Path, mic, speaker):
         local["CLTL_AUDIO_URL"] = mic.url
     if speaker is not None:
         local["CLTL_TTS_URL"] = speaker.url
+    if camera is not None:
+        local["CLTL_IMAGE_URL"] = camera.url
 
     return InProcessRunner(scenario, storage_dir=storage, environment=local)
 

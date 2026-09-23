@@ -138,6 +138,7 @@ tests/
 | `slices/test_eliza_chatui.py` | chatui, eliza | HTTP post -> `text_in` -> `text_out` -> HTTP get |
 | `slices/test_context_bdi.py` | context | init intention -> scenario -> greeting -> `initialized` -> `eliza` |
 | `slices/test_backend_vad.py` | backend, vad | microphone -> audio storage -> `VadMentionEvent` |
+| `slices/test_backend_image.py` | backend | camera -> image storage -> `ImageSignalEvent`, and absent at rate 0 |
 | `slices/test_vad_asr.py` | backend, asr | `VadMentionEvent` -> audio fetched by range -> `AsrTextSignalEvent` |
 | `slices/test_backend_storage.py` | backend | audio stored and served back over HTTP, by range |
 | `slices/test_backend_tts.py` | backend, eliza | reply on `text_out` -> the loudspeaker, microphone open and shut |

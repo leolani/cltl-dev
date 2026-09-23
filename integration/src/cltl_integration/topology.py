@@ -262,6 +262,27 @@ def needs_speaker(topology: Topology, tier: str) -> bool:
     return bool(merged_config(topology, tier).get("cltl.backend.tts", "topic", fallback=""))
 
 
+def needs_camera(topology: Topology, tier: str) -> bool:
+    """Whether this topology's backend will try to capture images.
+
+    ``BackendContainer`` builds an ``ImageCamera`` only when
+    ``[cltl.backend.image] rate`` is above zero, and ``BackendService`` gates its
+    capture thread on the same threshold — so unlike the microphone, which the
+    topic alone switches on, the rate is what decides here. That camera GETs
+    ``server_image_url`` once per interval; with nothing listening it retries and
+    logs a connection error per attempt, so a demo has to start a stub camera
+    before the topology rather than after.
+    """
+    if "backend" not in topology.modules:
+        return False
+
+    rate = merged_config(topology, tier).get("cltl.backend.image", "rate", fallback="0")
+    try:
+        return float(rate) > 0
+    except ValueError:
+        return False
+
+
 ELIZA = Topology(name="eliza", modules=("eliza",), overlay="eliza.config")
 
 CONTEXT = Topology(name="context", modules=("context",), overlay="context.config")
@@ -280,6 +301,12 @@ BACKEND_VAD = Topology(
     name="backend_vad",
     modules=("backend", "vad"),
     overlay="backend_vad.config",
+)
+
+BACKEND_IMAGE = Topology(
+    name="backend_image",
+    modules=("backend",),
+    overlay="backend_image.config",
 )
 
 VAD_ASR = Topology(
@@ -324,6 +351,12 @@ SPOKEN_PIPELINE = Topology(
     name="spoken_pipeline",
     modules=("backend", "vad", "asr", "context", "eliza", "chatui"),
     overlay="spoken_pipeline.config",
+)
+
+CHAT_FULL = Topology(
+    name="chat_full",
+    modules=("eliza", "context", "chatui", "monitoring", "backend"),
+    overlay="chat_full.config",
 )
 
 CHATUI_IMAGE = Topology(
@@ -400,9 +433,9 @@ MULTITENANT = TenantDeployment(
 TOPOLOGIES: Dict[str, Topology] = {
     topology.name: topology
     for topology in (ELIZA, CONTEXT, ELIZA_CHATUI, EMISSOR, BACKEND,
-                     BACKEND_VAD, VAD_ASR, AUDIO_PIPELINE, TEXT_PIPELINE,
+                     BACKEND_VAD, BACKEND_IMAGE, VAD_ASR, AUDIO_PIPELINE, TEXT_PIPELINE,
                      BACKEND_TTS, BACKEND_TTS_MIC, SPOKEN_PIPELINE,
-                     CHATUI_IMAGE, CHATUI_MONITORING,
+                     CHAT_FULL, CHATUI_IMAGE, CHATUI_MONITORING,
                      CSPLIT_SERVER, CSPLIT_CLIENT,
                      CSPLIT_AUDIO_SERVER, CSPLIT_AUDIO_CLIENT,
                      MULTITENANT_SERVER, MULTITENANT_TENANT)

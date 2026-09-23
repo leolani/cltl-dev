@@ -37,6 +37,7 @@ DEFAULT_PORT = 8000
 # through InProcessRunner(environment=...).
 TIER_ENVIRONMENT_DEFAULTS = {
     "CLTL_AUDIO_URL": "",
+    "CLTL_IMAGE_URL": "",
     "CLTL_TTS_URL": "",
 }
 
@@ -198,6 +199,14 @@ class InProcessRunner:
         os.environ.update(TIER_ENVIRONMENT_DEFAULTS)
         os.environ["CLTL_HTTP_BASE"] = self.base_url
         os.environ["CLTL_STORAGE_DIR"] = str(self._storage_dir)
+        # Where the *browser* reaches cltl-monitoring, for the chat UI's
+        # Monitoring tab. Root-relative here because every module in this tier
+        # shares one DispatcherMiddleware on one port. Assigned rather than
+        # defaulted, and to the empty string when the topology has no monitoring
+        # module: an unexpanded $VAR would otherwise warn on every config read,
+        # and an empty value is what leaves the tab out.
+        os.environ["CLTL_MONITORING_URL"] = (
+            "/monitoring" if "monitoring" in self._topology.modules else "")
         os.environ.update(self._environment)
 
         load_config(self._topology, "inprocess", self._extra_config)

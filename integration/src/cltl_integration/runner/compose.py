@@ -198,6 +198,7 @@ class ComposeStack:
         self._started = True
 
         self._discover_ports()
+        self._publish_monitoring_url()
         self._attach()
 
     def stop(self) -> None:
@@ -240,6 +241,7 @@ class ComposeStack:
         env["CLTL_STORAGE_DIR"] = str(storage_dir or (self._root / "storage"))
         env["CLTL_MODEL_CACHE"] = str(MODEL_CACHE)
         env.setdefault("CLTL_AUDIO_URL", "")
+        env.setdefault("CLTL_IMAGE_URL", "")
         env.setdefault("CLTL_TTS_URL", "")
         # Assigned, not setdefault: this env starts as a copy of os.environ, so a
         # CLTL_TENANT exported in the developer's shell — or written there by a
@@ -264,6 +266,35 @@ class ComposeStack:
                 f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}")
 
         return result
+
+    def _publish_monitoring_url(self) -> None:
+        """Hand the chat UI the *browser's* URL for cltl-monitoring.
+
+        Every other URL a container reads is a name on the compose network, so
+        it can be set before `up`. This one cannot: it is read by the chat UI's
+        page, which runs in a browser outside the network, so it has to be the
+        published host port — and the port is ephemeral, so it does not exist
+        until the container it belongs to is already running.
+
+        Hence the second pass. The chat UI comes up with the variable empty,
+        the port is discovered, and the service is recreated with it set. Only
+        chatui is recreated, so nothing else on the bus is disturbed; `up` for a
+        single service leaves the others alone, and `--no-deps` keeps compose
+        from restarting the broker underneath them.
+
+        A topology without both modules needs no second pass at all.
+        """
+        if not {"chatui", "monitoring"} <= set(self._topology.modules):
+            return
+
+        env = self._compose_env()
+        env["CLTL_CONTAINER_MONITORING_URL"] = self.base_url("monitoring") + "/monitoring"
+        self._compose("up", "-d", "--no-deps", "--force-recreate",
+                      "--wait", "--wait-timeout", str(int(self._timeout)),
+                      "chatui", env=env, timeout=self._timeout + 60)
+
+        # The recreated container publishes a new ephemeral port.
+        self._discover_ports()
 
     def _discover_ports(self) -> None:
         services = (("rabbitmq",) if self._broker else ()) + self._service_names()
@@ -397,7 +428,16 @@ class ComposeRunner(ComposeStack):
         # warning for each unexpanded $VAR on every read.
         os.environ["CLTL_STORAGE_URL"] = (
             self.base_url("backend") + "/storage/" if "backend" in self._topology.modules else "")
+        # Where the *browser* reaches cltl-monitoring, for the chat UI's
+        # Monitoring tab. A published host port, never `monitoring:8000`: the
+        # compose service name resolves on the compose network, and the browser
+        # is not on it. Empty when the topology has no monitoring module, which
+        # is what leaves the tab out.
+        os.environ["CLTL_MONITORING_URL"] = (
+            self.base_url("monitoring") + "/monitoring"
+            if "monitoring" in self._topology.modules else "")
         os.environ["CLTL_AUDIO_URL"] = ""
+        os.environ["CLTL_IMAGE_URL"] = ""
         os.environ["CLTL_TTS_URL"] = ""
         # Untenanted by default, and assigned rather than defaulted for the same
         # reason as in _compose_env: an unset $CLTL_TENANT would reach
