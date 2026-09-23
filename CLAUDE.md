@@ -242,6 +242,15 @@ healthy and wired to nothing.
 - ASR: Whisper by default; set `implementation:` to disable (`[cltl.asr]`)
 - Backend: local server on port 8000 (`[cltl.backend]`)
 - Event bus: `internal` by default; `kombu` for Docker (`[cltl.event]`)
+- Backend camera: `[cltl.backend.image] rate` is the on/off switch, not the
+  topic. Above zero, `BackendContainer.camera` builds an `ImageCamera` over a
+  `ClientImageSource` that GETs `[cltl.backend] server_image_url` + `/image`;
+  at or below zero it returns the falsy sentinel and `BackendService` skips
+  its capture thread at the same threshold. Both must agree — a camera built
+  at rate 0 would capture in an unthrottled loop, and a service thread
+  started against an absent camera dies on `__enter__`. The wire format is
+  base64 ndarray JSON, not an image codec, so this path needs no cv2; only
+  `run_server: True` reaches `cv2_source.py` and a real device.
 - Chat UI image annotation: `[cltl.chat-ui] image_upload: True` adds a panel
   beside the chat where a person uploads an image, drags labelled rectangles
   over it and submits. Submitting publishes **one** `ImageSignalEvent` on
