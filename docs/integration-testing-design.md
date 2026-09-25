@@ -532,17 +532,20 @@ shipped ASR backend needs torch or a cloud account), and `environment` sets the
 variables the tier config interpolates before it is read (used to hand the stub
 microphone's ephemeral port to `[cltl.backend] server_audio_url`).
 
-Three defects surfaced that no existing test could see. Each is recorded as an
+Three defects surfaced that no existing test could see. Each was recorded as an
 `xfail(strict=True)` naming the file, the line and the fix, so repairing one
-turns the suite red:
+turns the suite red — which is how the first of them was closed:
 
-* **`CachedAudioStorage` never creates its own directory.** `cached_storage.py:44`
+* **`CachedAudioStorage` never creates its own directory.** ~~`cached_storage.py:44`
   calls `os.makedirs(os.path.dirname(self._storage_path))` — the parent of the
-  directory it writes into. `CachedImageStorage` repeats it at line 176. Nothing
-  creates `app/py-app/storage/audio` either, so a fresh checkout of the
-  application persists no audio at all: every write fails with a bare libsndfile
-  "System error", which `BackendService`'s recording thread catches, logs and
-  retries forever while the live pipeline keeps working off the in-memory cache.
+  directory it writes into. `CachedImageStorage` repeats it at line 176.~~ Every
+  write failed with a bare libsndfile "System error", which `BackendService`'s
+  recording thread catches, logs and retries forever while the live pipeline
+  keeps working off the in-memory cache — visibly fine, quietly lossy.
+  **Fixed:** both constructors now `os.makedirs(self._storage_path)`. The xfail
+  in `tests/slices/test_backend_storage.py` became a live test, joined by one
+  for `CachedImageStorage`, and `cltl-backend/tests/test_cached_storage.py`
+  covers the nested and already-exists cases.
 * **`KeywordService` can never activate.** `start()` hardcodes
   `intentions=["chat"]` and `from_config` ignores the configured
   `[cltl.keyword] intentions`, while the BDI model only ever produces `init` and

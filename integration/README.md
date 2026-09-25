@@ -161,7 +161,7 @@ Tier 2 (`tests/compose/`):
 | `test_multitenant.py` | one shared cltl-eliza and two tenant deployments on one broker: does the tenant id isolate them |
 | `test_compose_file.py` | the compose file still says what the registry and the runners assume |
 
-Six tests are `xfail(strict=True)` against defects in the modules, so that
+Four tests are `xfail(strict=True)` against defects in the modules, so that
 fixing one turns the suite red and forces the marker out. Each carries the file,
 the line and the fix in its `reason`.
 
