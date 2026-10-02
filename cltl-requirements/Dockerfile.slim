@@ -20,6 +20,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 
+# Deliberately NOT installed, and the reason is worth recording because each is
+# a request someone will eventually make of this image:
+#
+#   ffmpeg      — ~80 MB closure. `LocalTTSOutput._play_remote` converts gTTS MP3
+#                 to WAV through pydub, which shells out to it. Reached only by
+#                 `[cltl.backend.text_output] remote_type: sound`; the `console`
+#                 and `remote` (AnimatedRemoteTextOutput) paths do not touch it,
+#                 and a containerised deployment that wants spoken output should
+#                 POST to a loudspeaker rather than decode audio here.
+#   portaudio   — PyAudio has no aarch64 wheel, so it needs the headers and a
+#                 compiler. Only `cltl.backend.server` and
+#                 `cltl.backend.source.pyaudio_source` import it, both inside a
+#                 `try`, and both only when `run_server: True` drives a real
+#                 device. A container has no device to drive.
+#   curl        — the component HEALTHCHECKs probe with `python -c urllib.request`
+#                 instead. The interpreter is already here.
+#
+# Anything added below lands in every image built on this base, so prefer a
+# component-level install over growing this list.
+
 FROM apt AS pypi
 
 COPY requirements.slim.txt ./

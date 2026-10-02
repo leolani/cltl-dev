@@ -28,3 +28,17 @@ pydub==0.25.1
 
 # Video / image file I/O (no device access)
 opencv-python-headless==4.8.0.76
+
+# Image rendering. cltl.monitoring draws labelled boxes onto the images it was
+# shown (`cltl/monitoring/render.py`), and PIL is a module-level import of its
+# api, memory and service modules. The component Dockerfiles install with
+# `--no-index --find-links=/leolani`, which sees only the cltl.* sdists, so a
+# third-party dependency that is not already in the base image cannot resolve.
+pillow==10.4.0
+
+# Speech synthesis over HTTP, not through a sound device. gTTS POSTs text to
+# Google Translate's TTS endpoint and gets MP3 bytes back; it needs no audio
+# hardware. `cltl.backend.source.local_tts` imports it unguarded and
+# `cltl_service.backend.backend_container` imports that module at the top level,
+# so cltl-backend does not start without it.
+gTTS==2.5.4

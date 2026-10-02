@@ -49,7 +49,11 @@ install: docker
 .PHONY: docker
 docker: docker.base.lock docker.slim.lock
 
-docker.base.lock: requirements.txt
+# Prerequisites are the two files the build actually reads. `requirements.txt` was
+# named here instead of `requirements.base.txt`, which Dockerfile.base COPYs, so
+# editing the base dependency list did not rebuild the image while editing an
+# unrelated file did. The Dockerfile belongs here for the same reason.
+docker.base.lock: requirements.base.txt Dockerfile.base
 	DOCKER_BUILDKIT=1 docker build -t ghcr.io/leolani/cltl-base:$(project_version) -t ghcr.io/leolani/cltl-base:latest -f Dockerfile.base .
 	@touch docker.base.lock
 
@@ -64,14 +68,20 @@ docker-ghcr-base-push: docker-ghcr-build
 	docker push ghcr.io/leolani/cltl-base:$(project_version)
 	docker push ghcr.io/leolani/cltl-base:latest
 
-docker.slim.lock: requirements.slim.txt
+docker.slim.lock: requirements.slim.txt Dockerfile.slim
 	DOCKER_BUILDKIT=1 docker build -t ghcr.io/leolani/cltl-base-slim:$(project_version) -t ghcr.io/leolani/cltl-base-slim:latest -f Dockerfile.slim .
 	@touch docker.slim.lock
 
 .PHONY: docker-slim
 docker-slim: docker.slim.lock
 
+# Named docker-ghcr-slim-push to match the .PHONY above and what docker-ghcr-push
+# depends on. It was defined as `docker-slim-ghcr-push`, so the dependency
+# resolved to a .PHONY name with no recipe -- which make considers satisfied
+# without doing anything. `make docker-ghcr-push` pushed the full base and
+# silently skipped the slim one, leaving the registry's cltl-base-slim:latest
+# behind every component image built on it.
 .PHONY: docker-ghcr-slim-push
-docker-slim-ghcr-push: docker-slim
+docker-ghcr-slim-push: docker-slim
 	docker push ghcr.io/leolani/cltl-base-slim:$(project_version)
 	docker push ghcr.io/leolani/cltl-base-slim:latest

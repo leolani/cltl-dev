@@ -312,6 +312,76 @@ for whichever modules the scenario actually includes.
 2. **Docker Compose** — containerised with RabbitMQ (`kombu` event bus); `integration/compose/docker-compose.yml` is the reference, covering every module plus a broker, including the client/server split
 3. **Kubernetes** — full orchestration for production
 
+### Base images
+
+Two, both built by `make -C cltl-requirements docker`:
+
+| Image | From | Size | Carries |
+|---|---|---|---|
+| `ghcr.io/leolani/cltl-base` | `python:3.10` | ~3.9 GB | `requirements.base.txt` — torch, transformers, whisper, spacy, PyAudio, opencv, matplotlib, a toolchain |
+| `ghcr.io/leolani/cltl-base-slim` | `python:3.10-slim` | ~450 MB | `requirements.slim.txt` — emissor's data model, kombu, Flask, soundfile, `opencv-python-headless`, Pillow, gTTS |
+
+`cltl-backend`, `cltl-chat-ui`, `cltl-context`, `cltl-monitoring` and
+`cltl-emissor-data` build on the **slim** base: containerised, none of them touches
+a capture device. The backend's microphone and camera are a
+`ClientAudioSource`/`ClientImageSource` pair that GET from a device host, and the
+wire format is base64 ndarray JSON rather than an image or audio codec;
+emissor-data only ever reads and writes files. `cltl-asr`, `cltl-vad` and
+`cltl-eliza` are still on the full base — whisper, webrtcvad and the NLP stack
+respectively.
+
+**Each Dockerfile names its own base** through `ARG base_image`, and that is the
+only place it is decided. `makefile.docker.mk` passes `--build-arg base_image`
+only when `docker_base` is non-empty, so the Dockerfile's default wins; the
+variable used to default to the full base in `makefile.component.mk` and override
+every Dockerfile silently, which is how components already pointed at the slim
+base kept being built at 3.9 GB. To build one against another base:
+
+```bash
+make -C cltl-context docker-ghcr-build docker_base=ghcr.io/leolani/cltl-base:latest
+```
+
+Four things make a component slim-incompatible, and all four were real:
+
+- **A dependency the slim base lacks.** Component Dockerfiles install with
+  `--no-index --find-links=/leolani`, which sees only the `cltl.*` sdists — never
+  `cltl-requirements/mirror/`. A third-party package that is not already in the
+  base image cannot resolve, so the build fails rather than degrading. This is why
+  `requirements.slim.txt` carries Pillow (for `cltl/monitoring/render.py`) and
+  gTTS (which `cltl.backend.source.local_tts` imports unguarded).
+- **A test library in a runtime extra.** `cltl.backend[impl]` declared `mock` and
+  `parameterized`, which nothing under `src/` imports; it made the extra
+  uninstallable offline and broke the `cltl-monitoring` image, which depends on it
+  only to reach `requests`.
+- **PyAudio.** No aarch64 wheel, so it compiles from source and needs
+  `portaudio19-dev` plus a toolchain — most of what separates the two bases. The
+  backend's `[service]` extra declares it; `[docker]` is the same list without it,
+  and `requirements.docker.txt` uses that. Both importers (`cltl.backend.server`,
+  `cltl.backend.source.pyaudio_source`) guard it in a `try` and are reached only
+  when `run_server: True` drives a real device.
+- **Naming cv2.** Two differently named distributions provide it —
+  `opencv-python` in the app and harness venvs, `opencv-python-headless` in
+  `cltl-base-slim` — so declaring either breaks the other environment's
+  `--no-index` install. Nothing declares it: `cltl.chat-ui`,
+  `cltl.emissor-data[impl]` and `cltl.backend` all import it inside a `try`
+  instead. `cltl-emissor-data` named `opencv-python`, which is what kept it on the
+  full base. Note that a guarded cv2 **degrades silently** — emissor-data falls
+  back to `audio_loader = None`/`image_loader = None` and keeps storing signals it
+  can no longer read back — so the image test asserts the import succeeds rather
+  than that the build does.
+
+`ffmpeg` is deliberately absent too. `LocalTTSOutput._play_remote` converts gTTS
+MP3 to WAV through pydub, which shells out to it, so
+`[cltl.backend.text_output] remote_type: sound` does not work on the slim base —
+the `console` and `remote` (`AnimatedRemoteTextOutput`) paths, which are what the
+integration configs use, never touch it.
+
+HEALTHCHECKs probe with `python -c urllib.request` rather than `curl`:
+`python:3.10-slim` ships no curl, and only rabbitmq's health gates anything in
+the compose file, so a curl probe would have reported `unhealthy` forever
+unnoticed. `integration/tests/compose/test_image_base.py` asserts all of the
+above against the built images.
+
 ## Development Conventions
 
 ### Imports
