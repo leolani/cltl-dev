@@ -370,11 +370,10 @@ Four things make a component slim-incompatible, and all four were real:
   can no longer read back — so the image test asserts the import succeeds rather
   than that the build does.
 
-`ffmpeg` is deliberately absent too. `LocalTTSOutput._play_remote` converts gTTS
-MP3 to WAV through pydub, which shells out to it, so
-`[cltl.backend.text_output] remote_type: sound` does not work on the slim base —
-the `console` and `remote` (`AnimatedRemoteTextOutput`) paths, which are what the
-integration configs use, never touch it.
+`ffmpeg` is on the slim base because `LocalTTSOutput._play_remote` converts gTTS
+MP3 to WAV through pydub, which shells out to it
+(`[cltl.backend.text_output] remote_type: sound`). It costs ~380 MB unpacked.
+Playing through a local sound device (`playsound`) is still unsupported there.
 
 HEALTHCHECKs probe with `python -c urllib.request` rather than `curl`:
 `python:3.10-slim` ships no curl, and only rabbitmq's health gates anything in

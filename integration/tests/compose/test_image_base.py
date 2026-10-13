@@ -181,6 +181,18 @@ class TestTheImageCanDoItsJob:
             f"carries these; a component image that cannot import them will fail at "
             f"runtime, not at startup:\n{result.stderr}")
 
+    def test_ffmpeg_is_present_for_pydub(self, slim_module):
+        """`LocalTTSOutput._play_remote` converts gTTS MP3 to WAV through pydub,
+        which shells out to ffmpeg. Without it the failure is a FileNotFoundError
+        at the first spoken reply, not at startup."""
+        result = subprocess.run(
+            ["docker", "run", "--rm", "--entrypoint", "ffmpeg",
+             f"{slim_module.image}:latest", "-version"],
+            capture_output=True, text=True, timeout=300)
+
+        assert result.returncode == 0, (
+            f"{slim_module.image}:latest has no working ffmpeg:\n{result.stderr}")
+
     def test_the_heavy_stack_is_absent(self, slim_module):
         """Not a size assertion in disguise: each of these costs a real dependency.
 

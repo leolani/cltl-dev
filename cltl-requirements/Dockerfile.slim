@@ -15,20 +15,17 @@ SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libsndfile1 \
+        ffmpeg \
         libsm6 \
         libxext6 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 
 # Deliberately NOT installed, and the reason is worth recording because each is
-# a request someone will eventually make of this image:
+# a request someone will eventually make of this image (ffmpeg used to be on
+# this list; cltl.backend's `remote_type: sound` needs it to turn gTTS MP3 into
+# WAV through pydub, and the backend is in every deployment, so it is here):
 #
-#   ffmpeg      — ~80 MB closure. `LocalTTSOutput._play_remote` converts gTTS MP3
-#                 to WAV through pydub, which shells out to it. Reached only by
-#                 `[cltl.backend.text_output] remote_type: sound`; the `console`
-#                 and `remote` (AnimatedRemoteTextOutput) paths do not touch it,
-#                 and a containerised deployment that wants spoken output should
-#                 POST to a loudspeaker rather than decode audio here.
 #   portaudio   — PyAudio has no aarch64 wheel, so it needs the headers and a
 #                 compiler. Only `cltl.backend.server` and
 #                 `cltl.backend.source.pyaudio_source` import it, both inside a
