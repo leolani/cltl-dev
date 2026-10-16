@@ -16,6 +16,8 @@ So the assertions here are as much about *when* Eliza is silent as about when it
 speaks.
 """
 import pytest
+import requests
+from cltl.commons.language_data.sentences import GOODBYE
 
 from cltl_integration.drivers.conversation import (GREETING, TEXT_IN, TEXT_OUT,
                                                    TOPICS, Conversation)
@@ -111,3 +113,34 @@ class TestConversation:
             TEXT_OUT, lambda event: event.id != first.id)
 
         assert second.payload.signal.text
+
+
+class TestStopButton:
+    """The chat UI's stop button says the configured phrase on the user's behalf.
+
+    The browser side is not exercised here; what can silently rot is the
+    agreement between two modules that know nothing of each other: the phrase
+    the chat UI hands the page, and the keywords cltl-context listens for.
+    """
+
+    def _stop_phrase(self, conversation) -> str:
+        config = requests.get(f"{conversation.runner.url('chatui')}/config", timeout=5).json()
+
+        return config["stop_phrase"]
+
+    def test_the_phrase_is_one_the_keyword_service_listens_for(self, conversation):
+        phrase = self._stop_phrase(conversation)
+
+        assert phrase.lower() in {keyword.lower() for keyword in GOODBYE}
+
+    def test_pressing_it_ends_the_scenario(self, conversation):
+        conversation.open().confirm()
+        conversation.runner.probe.subscribe("cltl.topic.desire")
+        conversation.runner.probe.clear()
+
+        conversation.say(self._stop_phrase(conversation))
+
+        quit_desire = conversation.runner.probe.await_event(
+            "cltl.topic.desire", lambda event: "quit" in getattr(event.payload, "achieved", []))
+
+        assert "quit" in quit_desire.payload.achieved
