@@ -371,6 +371,12 @@ CHATUI_MONITORING = Topology(
     overlay="chatui_monitoring.config",
 )
 
+CHATUI_STATUS = Topology(
+    name="chatui_status",
+    modules=("chatui",),
+    overlay="chatui_status.config",
+)
+
 # -- client/server split ----------------------------------------------------
 #
 # Four topologies rather than two, because text and audio need different modules
@@ -435,7 +441,7 @@ TOPOLOGIES: Dict[str, Topology] = {
     for topology in (ELIZA, CONTEXT, ELIZA_CHATUI, EMISSOR, BACKEND,
                      BACKEND_VAD, BACKEND_IMAGE, VAD_ASR, AUDIO_PIPELINE, TEXT_PIPELINE,
                      BACKEND_TTS, BACKEND_TTS_MIC, SPOKEN_PIPELINE,
-                     CHAT_FULL, CHATUI_IMAGE, CHATUI_MONITORING,
+                     CHAT_FULL, CHATUI_IMAGE, CHATUI_MONITORING, CHATUI_STATUS,
                      CSPLIT_SERVER, CSPLIT_CLIENT,
                      CSPLIT_AUDIO_SERVER, CSPLIT_AUDIO_CLIENT,
                      MULTITENANT_SERVER, MULTITENANT_TENANT)

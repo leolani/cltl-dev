@@ -24,7 +24,8 @@ import threading
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-from cltl_integration.drivers import audio
+from cltl_integration.drivers import audio, status
+from cltl_integration.drivers.status import STATUS_TOPIC
 from cltl_integration.drivers.audio import StubAudioServer
 from cltl_integration.drivers.camera import StubImageServer
 from cltl_integration.drivers.tts import StubTextOutput
@@ -160,7 +161,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         except ComposeError as error:
             raise SystemExit(str(error))
         try:
-            _open_scenario(scenario, runner)
+            opened = _open_scenario(scenario, runner)
+            _demo_status(scenario, runner, opened)
             report(scenario, runner, storage, mic, speaker=speaker)
             _wait()
         finally:
@@ -302,7 +304,7 @@ def _build(scenario, args, storage: Path, mic, speaker, camera):
     return InProcessRunner(scenario, storage_dir=storage, environment=local)
 
 
-def _open_scenario(scenario, runner) -> None:
+def _open_scenario(scenario, runner):
     """Give the modules the scenario they refuse to work without.
 
     ``ChatUiService`` will not render an utterance with a null scenario id and
@@ -329,6 +331,19 @@ def _open_scenario(scenario, runner) -> None:
     elif {"chatui", "backend", "emissor"} & modules:
         started = start_scenario(runner.event_bus, SCENARIO_TOPIC)
         print(f"Opened scenario {started.id} (no cltl-context in this scenario).")
+        return started
+
+    return None
+
+
+def _demo_status(scenario, runner, opened) -> None:
+    """Give the status bar something to show: nothing in the platform emits status yet."""
+    if opened is None or getattr(scenario, "name", None) != "chatui_status":
+        return
+
+    threading.Thread(target=status.demo, args=(runner.event_bus, STATUS_TOPIC, opened.id),
+                     name="demo-status", daemon=True).start()
+    print("Publishing demo status events on " + STATUS_TOPIC + ".")
 
 
 def _modules(scenario) -> set:
