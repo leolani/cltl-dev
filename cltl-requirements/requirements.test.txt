@@ -15,3 +15,9 @@ pytest-timeout
 # (packaging, exceptiongroup and tomli are already present in mirror/.)
 pluggy
 iniconfig
+
+# Browser tests of the chat UI page (integration/tests/browser). Only the Python
+# driver is mirrored; the Chromium it drives is fetched by `playwright install`
+# (make -C integration browsers) and the system libraries by the devcontainer's
+# playwright-deps feature.
+playwright
