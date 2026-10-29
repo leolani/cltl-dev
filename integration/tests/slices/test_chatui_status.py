@@ -69,6 +69,23 @@ def test_a_status_shows_and_is_ended_by_its_key(chat):
     assert [e["message"] for e in status["events"]] == ["loading", "loaded"]
 
 
+def test_a_persistent_status_goes_to_the_chat_and_not_the_bar(chat):
+    runner, scenario = chat
+    client = ChatClient(runner.url("chatui"))
+    chat_id = client.start_session()
+
+    publish_status(runner.event_bus, STATUS_TOPIC, scenario.id, "Went offline", "asr",
+                   level="warning", persistent=True)
+
+    status = _await_rows(runner, 1)
+    assert status["current"] is None
+    assert status["events"][0]["persistent"] is True
+    end = time.monotonic() + TIMEOUT
+    while not any("Went offline" in u["text"] for u in client.fetch_all(chat_id)):
+        assert time.monotonic() < end, "the status never reached the transcript"
+        time.sleep(0.05)
+
+
 def test_the_timeline_goes_with_the_scenario(chat):
     runner, scenario = chat
     publish_status(runner.event_bus, STATUS_TOPIC, scenario.id, "hello", "test")

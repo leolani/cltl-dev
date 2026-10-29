@@ -52,3 +52,26 @@ Publish with `Event.for_scenario_payload(scenario_id, StatusEvent(...))` on
 `cltl-chat-ui/tests/test_status.py`; `integration/tests/slices/test_chatui_status.py`
 (topology `chatui_status`, one module: the test is the emitter);
 `make -C integration demo-chatui-status` for a person.
+
+## Persistent status
+
+A `StatusEvent` with `persistent=True` is a lasting note in the conversation, not
+a bar entry. It cannot carry `ttl`, `progress` or `resolved` (nothing to expire,
+fill or end); `key` is allowed and ignored, and never replaces or ends a bar
+status.
+
+- **Transcript:** the chat UI appends an escaped `text/html` utterance with no
+  speaker to the current chat, the route the image echo takes. Ordering, replay on
+  reload and retention (unbounded, for the chat's lifetime) are the chat's own.
+  Nothing is published on the bus or recorded in EMISSOR. It does not reset the
+  inactivity timeout, and it creates the chat if no one has opened it. It is not
+  cleared with the timeline: it ends with the chat.
+- **Timeline:** still a row, marked `persistent` (and drawn "in chat"); never the
+  bar's current entry.
+- **Look:** Bubbles renders it inside an agent bubble, so `status.css` restyles the
+  bubble with `:has(.cltl-status-line)` into a centred, level-coloured line.
+  `chat.js` prints `speaker> ` before an utterance, so a speaker-less one is shown
+  as it is.
+- **Tests:** `tests/test_status.py` (log and service), the status slice, and the
+  browser test `tests/browser/test_chatui_page.py` for the centred line.
+

@@ -33,3 +33,7 @@ werkzeug
 # Test tooling. Mirrored offline via cltl-requirements/requirements.test.txt.
 pytest
 pytest-timeout
+
+# Drives the chat UI page in a real browser (tests/browser). The Chromium itself is
+# not a pip package: `make browsers` fetches it, and tests skip when it is absent.
+playwright

@@ -76,6 +76,7 @@ make -C integration test PYTEST_FLAGS="-v --log-cli-level=DEBUG -k eliza"
 |---|---|
 | `compose` | Needs a Docker Compose stack of the real images |
 | `slow` | Takes minutes — ASR inference or image pulls |
+| `browser` | Drives a page in Chromium through Playwright; skips when there is no browser |
 | `manual` | Needs a human to observe the result; never run unattended |
 
 `make test` selects `not compose and not manual`; `make test-compose` selects
@@ -83,6 +84,12 @@ make -C integration test PYTEST_FLAGS="-v --log-cli-level=DEBUG -k eliza"
 `not manual`. Nothing runs a `manual` test except `make test-manual`, and a
 manual test collected without a terminal skips rather than blocking on
 `input()`.
+
+`browser` tests (`tests/browser/`) run in tier 1 and load the chat UI page from a
+topology started in-process. Three things provide the browser, and a missing one
+skips the tests rather than failing them: the `playwright` package (`make
+build`), the Chromium it drives (`make browsers`, which is not a pip package),
+and the system libraries (the devcontainer's `playwright-deps` feature).
 
 ## Layout
 

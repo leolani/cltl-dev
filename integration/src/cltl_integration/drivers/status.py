@@ -25,10 +25,11 @@ def demo(event_bus: EventBus, topic: str, scenario_id: str, pause: float = 2.0) 
 
     while True:
         for percent in (0, 25, 50, 75, 100):
-            say(f"Loading the speech model ({percent}%)", "asr", progress=percent / 100,
+            say("Loading the speech model", "asr", progress=percent / 100,
                 key="asr.model")
         say("Speech model loaded", "asr", key="asr.model", resolved=True)
         say("Listening", "vad", ttl=pause * 1.5)
         say("Camera is slow", "backend", level="warning", key="backend.camera")
         say("Camera lost", "backend", level="error", key="backend.camera")
         say("Camera is back", "backend", key="backend.camera", resolved=True)
+        say("Switched to the offline speech model", "asr", level="warning", persistent=True)

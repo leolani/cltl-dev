@@ -64,6 +64,13 @@ venv: requirements.txt VERSION
 test: build
 	$(PYTEST) -m "$(TIER1_MARKERS)" $(PYTEST_FLAGS)
 
+# The browser the `browser`-marked tests drive. Not a pip package, so `build`
+# cannot provide it; without it those tests skip rather than fail. The system
+# libraries come from the devcontainer's playwright-deps feature.
+.PHONY: browsers
+browsers: build
+	venv/bin/playwright install chromium
+
 # Tier 2 runs the images, so check they exist before pytest spends three
 # minutes finding out. See src/cltl_integration/images.py.
 .PHONY: docker-images
