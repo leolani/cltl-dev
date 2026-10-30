@@ -24,7 +24,8 @@ import threading
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-from cltl_integration.drivers import audio, status
+from cltl_integration.drivers import audio, display, status
+from cltl_integration.drivers.display import DISPLAY_TOPIC
 from cltl_integration.drivers.status import STATUS_TOPIC
 from cltl_integration.drivers.audio import StubAudioServer
 from cltl_integration.drivers.camera import StubImageServer
@@ -163,6 +164,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         try:
             opened = _open_scenario(scenario, runner)
             _demo_status(scenario, runner, opened)
+            _demo_display(scenario, runner, opened)
             report(scenario, runner, storage, mic, speaker=speaker)
             _wait()
         finally:
@@ -344,6 +346,17 @@ def _demo_status(scenario, runner, opened) -> None:
     threading.Thread(target=status.demo, args=(runner.event_bus, STATUS_TOPIC, opened.id),
                      name="demo-status", daemon=True).start()
     print("Publishing demo status events on " + STATUS_TOPIC + ".")
+
+
+def _demo_display(scenario, runner, opened) -> None:
+    """Give the Display tab pages to show: nothing in the platform asks for one yet."""
+    if opened is None or getattr(scenario, "name", None) != "chatui_display":
+        return
+
+    threading.Thread(target=display.demo,
+                     args=(runner.event_bus, DISPLAY_TOPIC, opened.id, runner.url("chatui")),
+                     name="demo-display", daemon=True).start()
+    print("Publishing demo display events on " + DISPLAY_TOPIC + ".")
 
 
 def _modules(scenario) -> set:
