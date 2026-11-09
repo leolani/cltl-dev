@@ -34,6 +34,13 @@ docker-ghcr-build:
 docker-ghcr-push:
 	$(MAKE) target=docker-ghcr-push
 
+# Multi-platform (amd64 + arm64) build, pushed straight to the registry.
+# cltl-requirements comes first in project_components, so the base images exist
+# for both platforms before the components that build on them.
+.PHONY: docker-ghcr-push-multiarch
+docker-ghcr-push-multiarch:
+	$(MAKE) target=docker-ghcr-push-multiarch
+
 
 submodules := $(shell git submodule | xargs -L1 | cut -f 2 -d ' ' | grep -v util | xargs)
 
