@@ -85,3 +85,13 @@ docker-slim: docker.slim.lock
 docker-ghcr-slim-push: docker-slim
 	docker push ghcr.io/leolani/cltl-base-slim:$(project_version)
 	docker push ghcr.io/leolani/cltl-base-slim:latest
+
+# Multi-platform base images, pushed directly (a multi-platform build cannot be
+# loaded locally). Run these before building any component with
+# `docker-ghcr-push-multiarch`. See util/make/makefile.docker.mk.
+docker_platforms ?= linux/amd64,linux/arm64
+
+.PHONY: docker-ghcr-push-multiarch
+docker-ghcr-push-multiarch:
+	DOCKER_BUILDKIT=1 docker buildx build --platform $(docker_platforms) -t ghcr.io/leolani/cltl-base:$(project_version) -t ghcr.io/leolani/cltl-base:latest -f Dockerfile.base --push .
+	DOCKER_BUILDKIT=1 docker buildx build --platform $(docker_platforms) -t ghcr.io/leolani/cltl-base-slim:$(project_version) -t ghcr.io/leolani/cltl-base-slim:latest -f Dockerfile.slim --push .
