@@ -14,6 +14,11 @@
       "version": "1.0.0",
       "resolved": "ghcr.io/numblr/features/claude-dev@sha256:4c9cc31b701159d6f151d39abbae1cd7bcc47d763a6d1c8d58fd0bd86927fc44",
       "integrity": "sha256:4c9cc31b701159d6f151d39abbae1cd7bcc47d763a6d1c8d58fd0bd86927fc44"
+    },
+    "ghcr.io/numblr/features/playwright-deps:1": {
+      "version": "1.0.0",
+      "resolved": "ghcr.io/numblr/features/playwright-deps@sha256:365d8f2f95d9563277dfb5d5216dc93bcc7eaaff51cf4a68f1f25490b88216c4",
+      "integrity": "sha256:365d8f2f95d9563277dfb5d5216dc93bcc7eaaff51cf4a68f1f25490b88216c4"
     }
   }
 }
