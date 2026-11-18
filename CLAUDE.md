@@ -150,6 +150,9 @@ make -C integration test    # tier 1: modules composed in-process, no Docker
 it is also the only thing in the repo that catches a `setup.py` that fails to
 package a file.
 
+Pages are tested in a real browser too: `make -C integration browsers` fetches
+Chromium for Playwright once per machine, and `tests/browser/` skips without it.
+
 Tier 2 runs the real container images and needs Docker — provided by the
 `docker-in-docker` devcontainer feature — plus the component images built from
 the current source:
@@ -266,6 +269,37 @@ healthy and wired to nothing.
   a tab whose feature is off is left out, a single remaining tab loses the strip,
   and neither leaves the whole column out. See
   `docs/plans/chat-ui-monitoring-tab.md`.
+- Chat UI stop button: `[cltl.chat-ui] stop_phrase: Bye` adds a button that
+  types that phrase into the chat as the user's own utterance; empty (the
+  default) leaves the button out. What ends the scenario is cltl-context's
+  keyword service, so the phrase must be one of `[cltl.keyword] keywords`
+  (unset means `GOODBYE`) — nothing checks that at runtime, the text-pipeline
+  test does. The keyword worker is gated on the `eliza` intention, so a press
+  during the init handshake does nothing, and cltl-eliza also answers the
+  phrase, so the user may see two replies. The button follows `/chat/scenario`
+  and is disabled while there is none.
+- Chat UI status bar: `[cltl.chat-ui.events] topic_status` adds a bar under the
+  chat window showing what the backend's modules report as `StatusEvent`s
+  (`cltl.combot.event.status`); empty (the default) leaves it out. The bar shows
+  the highest-level entry that is not expired, ended or replaced, newest first;
+  clicking it opens the timeline of every event. Status is **scenario-bound**:
+  the chat UI keeps only events published with `Event.for_scenario_payload` for
+  the running scenario, drops the rest, and clears the timeline on
+  `ScenarioStopped`. A status ends by `ttl` (seconds from receipt), or
+  explicitly: an event with the same `key` and `resolved=True`. Nothing in the
+  platform emits status yet; `make -C integration demo-chatui-status` publishes
+  a loop of examples. `persistent=True` makes an event a lasting line in the
+  chat history instead of a bar entry. `[cltl.chat-ui] status_history` bounds the timeline. See
+  `docs/plans/chat-ui-status-bar.md`.
+- Chat UI display tab: `[cltl.chat-ui.events] topic_display` adds a tab that
+  frames the url of the newest `DisplayEvent` (`cltl.combot.event.display`:
+  `url`, `name`) and a list of every page shown in the scenario; empty (the
+  default) leaves it out. Only `http(s)` urls on `localhost` or
+  `[cltl.chat-ui] display_allowed_hosts` are shown — anything else is dropped and
+  logged — and the frame is unsandboxed, so that list is the control. The url must
+  be one the *browser* can reach. Many sites refuse framing, hence the "Open in
+  new tab" link. History is scenario-bound (`display_history`, default 50). See
+  `docs/plans/chat-ui-display-tab.md`; `make -C integration demo-chatui-display`.
 - EMISSOR persistence: `[cltl.emissor-data] flush_interval: 0` writes signals as
   they arrive. The library default of -1 keeps them in memory until a clean
   scenario stop, so an interrupted run loses the conversation.
