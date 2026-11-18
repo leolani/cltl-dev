@@ -39,6 +39,7 @@ TIER_ENVIRONMENT_DEFAULTS = {
     "CLTL_AUDIO_URL": "",
     "CLTL_IMAGE_URL": "",
     "CLTL_TTS_URL": "",
+    "CLTL_VLM_URL": "",
 }
 
 

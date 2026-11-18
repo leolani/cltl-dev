@@ -365,6 +365,12 @@ CHATUI_IMAGE = Topology(
     overlay="chatui_image.config",
 )
 
+CHATUI_VLM = Topology(
+    name="chatui_vlm",
+    modules=("chatui", "backend", "vlm"),
+    overlay="chatui_vlm.config",
+)
+
 CHATUI_MONITORING = Topology(
     name="chatui_monitoring",
     modules=("chatui", "monitoring", "backend"),

@@ -122,6 +122,13 @@ MODULES: Tuple[Module, ...] = (
         mounts=(("/monitoring", "monitoring_service"),),
     ),
     Module(
+        key="vlm",
+        container="cltl_service.vlm_object_recognition.container:ObjectRecognitionContainer",
+        image="ghcr.io/leolani/cltl-vlm-object",
+        requirement="cltl.vlm_object_recognition[service]",
+        workdir="/cltl-vlm-object",
+    ),
+    Module(
         key="asr",
         container="cltl_service.asr.container:ASRContainer",
         image="ghcr.io/leolani/cltl-asr",

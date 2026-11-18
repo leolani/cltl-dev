@@ -12,7 +12,7 @@ Usage: `/build [<module> | clean [<module>] | run | test [<module>] | check]`
 ```
 emissor  cltl-requirements  cltl-combot  cltl-backend  cltl-context
 cltl-eliza  cltl-chat-ui  cltl-emissor-data  cltl-monitoring  cltl-vad
-cltl-asr  integration
+cltl-asr  cltl-vlm-object  integration
 ```
 
 The real order comes from the generated `<component>/makefile.d` files, not from
@@ -26,7 +26,7 @@ Read-only. Run it before every branch except `run`.
 cd /workspaces/cltl-dev
 for c in emissor cltl-requirements cltl-combot cltl-backend cltl-context \
          cltl-eliza cltl-chat-ui cltl-emissor-data cltl-monitoring \
-         cltl-vad cltl-asr integration; do
+         cltl-vad cltl-asr cltl-vlm-object integration; do
   if   [ "$c" = cltl-requirements ]; then s="n/a (builds the mirror, not a venv)"
   elif [ ! -d "$c/venv" ];            then s="missing"
   elif [ ! -x "$c/venv/bin/python" ]; then s="DEAD (dangling interpreter)"
@@ -45,7 +45,7 @@ done
 echo "mirror:     $(ls cltl-requirements/mirror 2>/dev/null | wc -l) files"
 echo "leolani:    $(ls cltl-requirements/leolani 2>/dev/null | wc -l) sdists"
 echo "lock:       $([ -f cltl-requirements/requirements.lock ] && echo present || echo absent)"
-echo "makefile.d: $(ls */makefile.d 2>/dev/null | wc -l)/12"
+echo "makefile.d: $(ls */makefile.d 2>/dev/null | wc -l)/13"
 integration/venv/bin/python -c "import cltl.combot, emissor; print('integration/venv: imports ok')" 2>&1 | tail -1
 ```
 

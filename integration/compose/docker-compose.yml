@@ -40,6 +40,7 @@ x-cltl-env: &cltl-env
   # The stub microphone and the stub loudspeaker both run outside the compose
   # network, in the process running the tests. Empty unless a topology needs them.
   CLTL_AUDIO_URL: ${CLTL_AUDIO_URL:-}
+  CLTL_IMAGE_URL: ${CLTL_IMAGE_URL:-}
   CLTL_TTS_URL: ${CLTL_TTS_URL:-}
   # The event bus tenant. Empty on a single stack and on the shared server of a
   # multi-tenant deployment; set to its own id by each tenant deployment. Declared

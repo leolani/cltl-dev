@@ -22,9 +22,9 @@ submodules have an `origin` on github.com/leolani.
 
 ## Repository shape
 
-- 11 gitlinks in `.gitmodules`: `emissor`, `util`, `cltl-combot`,
+- 12 gitlinks in `.gitmodules`: `emissor`, `util`, `cltl-combot`,
   `cltl-emissor-data`, `cltl-chat-ui`, `cltl-eliza`, `cltl-backend`, `cltl-asr`,
-  `cltl-vad`, `cltl-context`, `cltl-monitoring`.
+  `cltl-vad`, `cltl-context`, `cltl-monitoring`, `cltl-vlm-object`.
 - **`cltl-requirements/` and `integration/` are NOT submodules.** They are
   components in the root makefile's `project_components` but ordinary tracked
   directories in the parent, so changes there — including `integration/VERSION`

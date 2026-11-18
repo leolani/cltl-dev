@@ -105,18 +105,6 @@ class TestModuleReadsWhatWeSend:
 
 
 class TestAgentAnnotation:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="The deployment half of the defect pinned in tier 1 by "
-               "tests/slices/test_vad_asr.py::TestAgentAnnotation. "
-               "cltl-asr/src/cltl_service/asr/schema.py:16 annotates the speaker "
-               "with the ConversationalAgent.SPEAKER *enum member*, where "
-               "TextSignalEvent.for_speaker/for_agent both pass "
-               "ConversationalAgent.SPEAKER.name. In process the annotation "
-               "value is the enum object; through marshal/unmarshal it becomes "
-               "the lowercased 'speaker'; every other producer writes 'SPEAKER'. "
-               "Three representations of one fact, and only this tier shows the "
-               "third. Fix: append .name, as cltl-combot does.")
     def test_the_speaker_annotation_matches_every_other_producer(self, bus):
         bus.event_bus.publish(TEXT_IN, Event.for_scenario_payload(SCENARIO, _asr_event("hello")))
 

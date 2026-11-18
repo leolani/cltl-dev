@@ -140,16 +140,6 @@ class TestTranscription:
 class TestAgentAnnotation:
     """Who said it — the one field three producers disagree about."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="cltl-asr/src/cltl_service/asr/schema.py:16 calls "
-               "add_agent_annotation(signal, ConversationalAgent.SPEAKER), passing "
-               "the enum member where TextSignalEvent.for_speaker/for_agent both "
-               "pass ConversationalAgent.SPEAKER.name. So the same fact is "
-               "represented three ways: 'SPEAKER' from every other producer, the "
-               "enum object from cltl-asr in tier 1, and 'speaker' from cltl-asr "
-               "in tier 2, where marshal/unmarshal turns the enum into its "
-               "lowercased name. Fix: append .name, as in cltl-combot.")
     def test_asr_annotates_the_speaker_like_every_other_producer(self, vad_asr):
         runner, _ = vad_asr()
         audio_id = _store(runner, audio.utterance())

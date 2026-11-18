@@ -121,8 +121,8 @@ demo-%: build
 # This component is a consumer of the registry, never a producer: it ships no
 # image and no sdist. The target exists so that `make docker-ghcr-build` at the
 # repo root, which walks every component, does not stop here.
-.PHONY: docker-ghcr-build docker-ghcr-push
-docker-ghcr-build docker-ghcr-push:
+.PHONY: docker-ghcr-build docker-ghcr-push docker-ghcr-push-multiarch
+docker-ghcr-build docker-ghcr-push docker-ghcr-push-multiarch:
 	@echo "Skip $@ for $(project_name): it publishes no image"
 
 

@@ -4,6 +4,8 @@ google-cloud-texttospeech==2.2.0
 google-cloud-translate==3.0.1
 webrtcvad==2.0.10
 openai-whisper==20250625
+# cltl-vlm-object: client for a llama-server's OpenAI-compatible API
+openai==1.109.1
 gTTS==2.5.4
 
 # NLP

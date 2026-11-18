@@ -42,3 +42,7 @@
 	path = cltl-monitoring
 	url = https://github.com/leolani/cltl-monitoring.git
 	branch = main
+[submodule "cltl-vlm-object"]
+	path = cltl-vlm-object
+	url = https://github.com/leolani/cltl-custom-vlm-object-recognition
+	branch = main
