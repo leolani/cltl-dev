@@ -29,6 +29,7 @@ decided by the deployment, from the published `ghcr.io/leolani/cltl-*` images.
 | `cltl-chat-ui` | Web-based text chat interface |
 | `cltl-emissor-data` | Event-driven EMISSOR data persistence service |
 | `cltl-monitoring` | Per-scenario view of what the platform perceived; serves the page the chat UI's Monitoring tab embeds |
+| `cltl-vlm-object` | Object and scene recognition: sends each `ImageSignalEvent`'s image to a llama-server-hosted vision-language model and publishes the objects, scene label and description as an `ObjectRecognitionEvent` |
 | `cltl-context` | Conversation context, scenario management and the BDI intention/desire loop |
 | `integration` | Integration tests for the modules — composes topologies and asserts the boundaries hold. Not a submodule; see `integration/README.md` and `docs/integration-testing-design.md` |
 
@@ -311,6 +312,15 @@ healthy and wired to nothing.
   replay. `[cltl.chat-ui] monitoring_url` is the URL the **browser** uses to
   reach it: root-relative under the app's dispatcher, a published host port in
   Compose (never the compose service name), and empty to leave the tab out.
+- VLM object recognition: `[cltl.vlm_object_recognition] host` is the
+  llama-server (OpenAI-compatible API, `/v1`) serving the vision model and
+  `[cltl.vlm_object_recognition.events]` names the image and object topics. Image
+  signals carry only a `cltl-storage:image/<id>` reference, so `[cltl.backend]
+  storage_url` (trailing slash) must point at the storage service — the module
+  refuses to start on an empty or unexpanded value. It publishes with the
+  incoming event as `source=`, so scenario and tenant carry through. Its package
+  keeps `api.py` and `llama_cpp.py` under `cltl/` and the service under
+  `cltl_service/`, like every other component.
 - Monitoring face names: a face is labelled with its vector identity
   (`face-1`) unless the deployment supplies a `NameResolver`
   (`cltl/monitoring/api.py`). The one implementation,
@@ -360,8 +370,8 @@ Two, both built by `make -C cltl-requirements docker`:
 a capture device. The backend's microphone and camera are a
 `ClientAudioSource`/`ClientImageSource` pair that GET from a device host, and the
 wire format is base64 ndarray JSON rather than an image or audio codec;
-emissor-data only ever reads and writes files. `cltl-asr`, `cltl-vad` and
-`cltl-eliza` are still on the full base — whisper, webrtcvad and the NLP stack
+emissor-data only ever reads and writes files. `cltl-asr`, `cltl-vad`, `cltl-eliza` and `cltl-vlm-object` are still on the full
+base — whisper, webrtcvad, the NLP stack, and `openai` (the VLM client)
 respectively.
 
 **Each Dockerfile names its own base** through `ARG base_image`, and that is the
