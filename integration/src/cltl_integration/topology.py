@@ -355,7 +355,7 @@ SPOKEN_PIPELINE = Topology(
 
 CHAT_FULL = Topology(
     name="chat_full",
-    modules=("eliza", "context", "chatui", "monitoring", "backend"),
+    modules=("eliza", "context", "chatui", "monitoring", "backend", "emissor"),
     overlay="chat_full.config",
 )
 
