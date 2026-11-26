@@ -208,6 +208,8 @@ class InProcessRunner:
         # and an empty value is what leaves the tab out.
         os.environ["CLTL_MONITORING_URL"] = (
             "/monitoring" if "monitoring" in self._topology.modules else "")
+        os.environ["CLTL_EMISSOR_URL"] = (
+            "/emissor/" if "emissor" in self._topology.modules else "")
         os.environ.update(self._environment)
 
         load_config(self._topology, "inprocess", self._extra_config)

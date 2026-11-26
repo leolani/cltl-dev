@@ -284,11 +284,17 @@ class ComposeStack:
 
         A topology without both modules needs no second pass at all.
         """
-        if not {"chatui", "monitoring"} <= set(self._topology.modules):
+        modules = set(self._topology.modules)
+        if "chatui" not in modules or not {"monitoring", "emissor"} & modules:
             return
 
+        # The same second pass also hands over cltl-emissor-data's URL, for the
+        # chat UI's download button.
         env = self._compose_env()
-        env["CLTL_CONTAINER_MONITORING_URL"] = self.base_url("monitoring") + "/monitoring"
+        if "monitoring" in modules:
+            env["CLTL_CONTAINER_MONITORING_URL"] = self.base_url("monitoring") + "/monitoring"
+        if "emissor" in modules:
+            env["CLTL_CONTAINER_EMISSOR_URL"] = self.base_url("emissor") + "/emissor/"
         self._compose("up", "-d", "--no-deps", "--force-recreate",
                       "--wait", "--wait-timeout", str(int(self._timeout)),
                       "chatui", env=env, timeout=self._timeout + 60)
@@ -436,6 +442,9 @@ class ComposeRunner(ComposeStack):
         os.environ["CLTL_MONITORING_URL"] = (
             self.base_url("monitoring") + "/monitoring"
             if "monitoring" in self._topology.modules else "")
+        os.environ["CLTL_EMISSOR_URL"] = (
+            self.base_url("emissor") + "/emissor/"
+            if "emissor" in self._topology.modules else "")
         os.environ["CLTL_AUDIO_URL"] = ""
         os.environ["CLTL_IMAGE_URL"] = ""
         os.environ["CLTL_TTS_URL"] = ""

@@ -57,6 +57,9 @@ x-cltl-env: &cltl-env
   # first pass, and empty for good in a topology with no monitoring module,
   # which is what leaves the tab out.
   CLTL_MONITORING_URL: ${CLTL_CONTAINER_MONITORING_URL:-}
+  # Where the *browser* reaches cltl-emissor-data, for the chat UI's download
+  # button; a published host port like the monitoring URL above.
+  CLTL_EMISSOR_URL: ${CLTL_CONTAINER_EMISSOR_URL:-}
 
 x-cltl-service: &cltl-service
   depends_on:
